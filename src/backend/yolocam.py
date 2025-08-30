@@ -1,10 +1,10 @@
 from ultralytics import YOLO
 import cv2
 
-model = YOLO("src/backend/best (2).pt") 
+model = YOLO("src/backend/best.pt") 
 CONFIDENCE_THRESHOLD = 0.5  # Set confidence threshold
 
-cap = cv2.VideoCapture(1)
+cap = cv2.VideoCapture(0)
 
 while cap.isOpened():
     ret, frame = cap.read()
