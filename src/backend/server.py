@@ -179,4 +179,4 @@ def handle_ping():
     emit('pong')
 
 if __name__ == '__main__':
-    socketio.run(app, host='172.20.10.5', port=3000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='192.168.0.105', port=3000, debug=True, allow_unsafe_werkzeug=True)
