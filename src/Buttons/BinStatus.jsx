@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const BinStatus = () => {
   const navigate = useNavigate();
@@ -64,7 +64,7 @@ const BinStatus = () => {
       {error && <p className="text-red-500 mt-4">{error}</p>}
       <p className="text-2xl font-bold mt-4">SELECT BIN TO CHECK STATUS:</p>
       <div className="flex gap-4 mt-4">
-        {["SYRINGE BARRELS", "SYRINGE NEEDLES", "INFECTIOUS WASTES"].map((bin, index) => (
+        {["SYRINGE", "HAZARDOUS WASTE", "NON-HAZARDOUS WASTE"].map((bin, index) => (
           <button key={index} onClick={() => checkBinStatus(bin)}
             className="bg-[#5DE2F0] text-black font-bold py-2 px-5 rounded-full shadow-lg hover:bg-[#3CB3C6]"
             disabled={error}>

@@ -23,8 +23,8 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode='threading',
-    ping_timeout=10,
-    ping_interval=5,
+    ping_timeout=30,
+    ping_interval=10,
     always_connect=True,
     transports=['websocket']
 )
@@ -35,7 +35,7 @@ thread_running = False
 client_connected = False
 
 try:
-    arduino = serial.Serial('COM7', 9600, timeout=1)
+    arduino = serial.Serial('COM13', 9600, timeout=1)
     time.sleep(2)  # wait for Arduino to initialize
     print("✅ Arduino connected")
 except Exception as e:
@@ -54,7 +54,7 @@ def detect_objects():
             socketio.emit('server_message', {'type': 'error', 'message': 'Failed to open camera'})
             return
 
-        model = YOLO("src/backend/best.pt")
+        model = YOLO("src/backend/test.pt")
         model.fuse()
         model.conf = 0.5
         detection_active = True
@@ -148,35 +148,44 @@ def handle_disconnect():
     client_connected = False
     thread_running = False
 
-@socketio.on('STERILIZE')
-def handle_sterilization():
-    print("🧪 Sterilization triggered from frontend")
+@socketio.on('THROW_SYRINGE')
+def handle_throw_syringe():
+    print("🟠 Syringe throw command received from frontend")
     if arduino and arduino.is_open:
         try:
-            arduino.write(b'STERILIZE\n')
-            emit('server_message', {'type': 'status', 'message': 'Sterilization Completed.'})
+            arduino.write(b'SYRINGE\n')
+            arduino.flush()               # ensure bytes are sent
+            time.sleep(0.05)              # give Arduino a tiny breathing room
+            emit('server_message', {'type': 'status', 'message': 'Syringe command sent.'})
+            # Optionally, read an Arduino reply:
+            # reply = arduino.readline().decode(errors='ignore').strip()
+            # print("Arduino reply:", reply)
+            # emit('server_message', {'type': 'status', 'message': f'Arduino: {reply}'})
+        except Exception as e:
+            print("Arduino write failed:", e)
+            emit('server_message', {'type': 'error', 'message': f'Syringe throw failed: {str(e)}'})
+    else:
+        emit('server_message', {'type': 'error', 'message': 'Arduino not connected'})
+
+@socketio.on('STERILIZE_EQUIPMENTS')
+def handle_sterilize_equipments():
+    print("🔵 Equipment sterilization command received from frontend")
+    if arduino and arduino.is_open:
+        try:
+            arduino.write(b'EQUIPMENT\n')
+            arduino.flush()
+            time.sleep(0.05)
+            emit('server_message', {'type': 'status', 'message': 'Equipment command sent.'})
         except Exception as e:
             print("Arduino write failed:", e)
             emit('server_message', {'type': 'error', 'message': f'Sterilization failed: {str(e)}'})
     else:
         emit('server_message', {'type': 'error', 'message': 'Arduino not connected'})
 
-@socketio.on('SANITIZE')
-def handle_sanitization():
-    print("Sanitization triggered from frontend")
-    if arduino and arduino.is_open:
-        try:
-            arduino.write(b'SANITIZE\n')
-            emit('server_message', {'type': 'status', 'message': 'Sanitization Completed.'})
-        except Exception as e:
-            print("Arduino write failed:", e)
-            emit('server_message', {'type': 'error', 'message': f'Sanitization failed: {str(e)}'})
-    else:
-        emit('server_message', {'type': 'error', 'message': 'Arduino not connected'})
 
 @socketio.on('ping')
 def handle_ping():
     emit('pong')
 
 if __name__ == '__main__':
-    socketio.run(app, host='192.168.0.105', port=3000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='192.168.1.5', port=3000, debug=True, allow_unsafe_werkzeug=True)

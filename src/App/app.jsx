@@ -1,11 +1,9 @@
 import { AnimatePresence } from "framer-motion";
-import React from "react";
 import { Route, BrowserRouter as Router, Routes, useLocation } from "react-router-dom";
 import ThrowWaste from '../backend/throwwaste';
 import AboutUs from '../Buttons/AboutUs';
 import BinStatus from '../Buttons/BinStatus';
 import Help from '../Buttons/help';
-import ShutdownScreen from '../Buttons/ShutdownScreen';
 import Dashboard from '../Front-end/dashboard';
 import Welcome from '../Front-end/welcome';
 
@@ -23,7 +21,6 @@ function AnimatedRoutes() {
         <Route path="/bin-status" element={<BinStatus />} />
         <Route path="/help" element={<Help />} />
         <Route path="/AboutUs" element={<AboutUs />} />
-        <Route path="/ShutdownScreen" element={<ShutdownScreen />} />
         {/* Optional: Redirect root to /welcome */}
         <Route path="*" element={<Welcome />} />
       </Routes>

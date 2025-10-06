@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import React from "react";
 import { useNavigate } from "react-router-dom";
 
 function Dashboard() {
@@ -40,8 +39,8 @@ function Dashboard() {
         transition={{ delay: 0.4, duration: 0.5 }}
       >
         {[
-          { text: "THROW WASTE", action: () => navigate("/throw-waste") },
-          { text: "BINS' STATUS", action: () => navigate("/bin-status") },
+          { text: "BIN" , action: () => navigate("/throw-waste") },
+          { text: "BIN STATUS", action: () => navigate("/bin-status") },
           { text: "HELP", action: () => navigate("/help") },
           { text: "ABOUT US", action: () => navigate("/AboutUs") },
         ].map((btn, index) => (
