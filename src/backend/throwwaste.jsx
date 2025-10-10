@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
 const syringeLabel = "syringe";
-const nonhazardous = ["gloves", "head-cap", "disposable-mask"];
+const hazardous = ["gauze pad", "gauze", "gloves", "disposable-mask"];
+const nonhazardous = ["bandage", "head-cap"];
 const equipments = ["scissor", "stethoscope", "sphygmomanometer"];
+const otherwaste = "cotton";
 
 function ThrowWaste() {
   const [status, setStatus] = useState("Initializing...");
@@ -16,6 +18,7 @@ function ThrowWaste() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isSterilizingEquipments, setIsSterilizingEquipments] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showCottonPrompt, setShowCottonPrompt] = useState(false); 
   const navigate = useNavigate();
   const socketRef = useRef(null);
   const timerRef = useRef(null);
@@ -24,7 +27,7 @@ function ThrowWaste() {
   // SOCKET.IO CONNECTION
   // ---------------------------
   useEffect(() => {
-    const socket = io("http://192.168.1.5:3000", {
+    const socket = io("http://192.168.0.108:3000", {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -61,9 +64,8 @@ function ThrowWaste() {
       console.log("Received pong from server");
     });
 
-    // Handle YOLO detection data
     socket.on("detection_event", (data) => {
-      console.log("Detection event:", data);
+      if (data.frame) setFrameUrl(data.frame); // ✅ Real-time frame from backend
       const label = data.label ? data.label.trim().toLowerCase() : "none";
       setConfidence(data.confidence || 0);
       setLastDetection(new Date().toLocaleTimeString());
@@ -72,28 +74,38 @@ function ThrowWaste() {
       if (label === "none") {
         setWasteType(null);
         setStatus("No waste detected. Please place waste in front of camera.");
-      } else if (label === syringeLabel) {
+      } 
+      else if (label === syringeLabel) {
         setWasteType(syringeLabel);
         setStatus(`⚠️ Syringe Detected! (${data.confidence}% confident)`);
         new Audio("/alert.mp3").play().catch((e) => console.log("Audio play failed:", e));
-      } else if (nonhazardous.includes(label)) {
+      } 
+      else if (hazardous.includes(label)) {
+        setWasteType("hazardous");
+        setStatus(`🔴 Hazardous Waste (${label}) Detected! (${data.confidence}% confident)`);
+      } 
+      else if (nonhazardous.includes(label)) {
         setWasteType("nonhazardous");
         setStatus(`🟢 Non-Hazardous Waste (${label}) Detected! (${data.confidence}% confident)`);
-      } else if (equipments.includes(label)) {
+      }
+      else if (equipments.includes(label)) {
         setWasteType("equipment");
         setStatus(`⚪ Equipment Detected: ${label.toUpperCase()} (${data.confidence}% confident)`);
-      } else {
+      }
+      else if (label === otherwaste) {
+        setShowCottonPrompt(true); // 🧩 trigger cotton prompt
+        setStatus(`🟡 Cotton Detected (${data.confidence}% confident)`);
+      }
+      else {
         setWasteType("other");
         setStatus(`⚪ Unrecognized Item (${label}) Detected (${data.confidence}% confident)`);
       }
     });
 
-    // Live frame updates
     socket.on("frame_update", (data) => {
       if (data.image) setFrameUrl(data.image);
     });
 
-    // Server messages (status/error)
     socket.on("server_message", (data) => {
       if (data.type === "error") {
         console.error("Error from server:", data.message);
@@ -127,17 +139,20 @@ function ThrowWaste() {
         setIsSterilizingEquipments(false);
         setShowOptions(true);
       }, 20000);
-    }
+    } 
 
-    // Updated Throw Waste logic with servo control
     else if (action === "Throwing Waste") {
       setStatus("Throwing waste...");
 
       if (socketRef.current) {
         if (wasteType === syringeLabel) {
-          socketRef.current.emit("THROW_SYRINGE"); // 🟠 Send to Flask for syringe servo
+          socketRef.current.emit("THROW_SYRINGE");
         } else if (equipments.includes(wasteType)) {
-          socketRef.current.emit("STERILIZE_EQUIPMENTS"); // 🔵 Send to Flask for equipment servo
+          socketRef.current.emit("STERILIZE_EQUIPMENTS");
+        } else if (wasteType === "hazardous") {
+          socketRef.current.emit("THROW_HAZARDOUS");
+        } else if (wasteType === "nonhazardous") {
+          socketRef.current.emit("THROW_NONHAZARDOUS");
         }
       }
 
@@ -174,12 +189,27 @@ function ThrowWaste() {
   };
 
   // ---------------------------
-  // BUTTONS & UI HELPERS
+  // 🧩 COTTON PROMPT HANDLER
+  // ---------------------------
+  const handleCottonChoice = (choice) => {
+    setShowCottonPrompt(false);
+    if (choice === "used") {
+      setWasteType("hazardous");
+      setStatus("🩸 Used Cotton Detected → Throwing to Hazardous Bin");
+    } else {
+      setWasteType("nonhazardous");
+      setStatus("🧻 Unused Cotton Detected → Throwing to Non-Hazardous Bin");
+    }
+  };
+
+  // ---------------------------
+  // BUTTON STYLES
   // ---------------------------
   const getButtonColor = () => {
     if (!wasteType) return "bg-gray-500 cursor-not-allowed";
     if (wasteType === syringeLabel) return "bg-orange-600 hover:bg-orange-700";
     if (wasteType === "nonhazardous") return "bg-green-600 hover:bg-green-700";
+    if (wasteType === "hazardous") return "bg-red-600 hover:bg-red-700";
     if (wasteType === "equipment") return "bg-blue-500 hover:bg-blue-600";
     return "bg-yellow-500 hover:bg-yellow-600";
   };
@@ -188,6 +218,7 @@ function ThrowWaste() {
     if (!wasteType) return "Waiting for Detection...";
     if (wasteType === syringeLabel) return "THROW SYRINGE";
     if (wasteType === "nonhazardous") return "THROW NON-HAZARDOUS WASTE";
+    if (wasteType === "hazardous") return "THROW HAZARDOUS WASTE";
     if (wasteType === "equipment") return "STERILIZE EQUIPMENTS";
     return "THROW OTHER WASTE";
   };
@@ -201,6 +232,7 @@ function ThrowWaste() {
       style={{ backgroundImage: "url('/images/background.png')" }}
     >
       <div className="flex flex-col items-center justify-center h-screen text-white">
+
         {/* Connection Indicator */}
         <div className="absolute top-4 right-4">
           <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
@@ -235,6 +267,7 @@ function ThrowWaste() {
               <div className="absolute top-0 left-0 bg-black bg-opacity-50 text-white p-2 rounded-tl-lg rounded-br-lg">
                 {wasteType === syringeLabel && "⚠️ "}
                 {wasteType === "nonhazardous" && "🟢 "}
+                {wasteType === "hazardous" && "🔴 "}
                 {wasteType === "equipment" && "⚪ "}
                 {wasteType.toUpperCase()}
               </div>
@@ -308,6 +341,31 @@ function ThrowWaste() {
             </div>
           </div>
         )}
+
+        {/* 🧩 COTTON PROMPT MODAL */}
+        {showCottonPrompt && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96">
+              <h3 className="text-xl font-bold mb-4">Cotton Detected</h3>
+              <p className="mb-6">Is the cotton used or unused?</p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => handleCottonChoice("used")}
+                  className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full"
+                >
+                  Used (Hazardous)
+                </button>
+                <button
+                  onClick={() => handleCottonChoice("unused")}
+                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
+                >
+                  Unused (Non-Hazardous)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

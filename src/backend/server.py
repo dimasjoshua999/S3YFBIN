@@ -49,12 +49,12 @@ def home():
 def detect_objects():
     global camera, thread_running
     try:
-        camera = cv2.VideoCapture(0)
+        camera = cv2.VideoCapture(1)
         if not camera.isOpened():
             socketio.emit('server_message', {'type': 'error', 'message': 'Failed to open camera'})
             return
 
-        model = YOLO("src/backend/test.pt")
+        model = YOLO("src/backend/YOLO2.pt")
         model.fuse()
         model.conf = 0.5
         detection_active = True
@@ -188,4 +188,4 @@ def handle_ping():
     emit('pong')
 
 if __name__ == '__main__':
-    socketio.run(app, host='192.168.1.5', port=3000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='192.168.0.108', port=3000, debug=True, allow_unsafe_werkzeug=True)

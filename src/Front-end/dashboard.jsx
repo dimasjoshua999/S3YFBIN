@@ -38,8 +38,8 @@ function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4, duration: 0.5 }}
       >
-        {[
-          { text: "BIN" , action: () => navigate("/throw-waste") },
+        {[  
+          { text: "BIN", action: () => navigate("/throw-waste") },
           { text: "BIN STATUS", action: () => navigate("/bin-status") },
           { text: "HELP", action: () => navigate("/help") },
           { text: "ABOUT US", action: () => navigate("/AboutUs") },
@@ -47,7 +47,7 @@ function Dashboard() {
           <motion.button
             key={index}
             onClick={btn.action}
-            className="bg-cyan-300 hover:bg-cyan-400 text-black font-extrabold text-2xl md:text-3xl py-6 px-10 rounded-xl w-full shadow-lg"
+            className="bg-cyan-300 hover:bg-cyan-400 text-white font-extrabold text-2xl md:text-3xl py-6 px-10 rounded-xl w-full shadow-lg"
             whileHover={{ scale: 1.08, backgroundColor: "#38BDF8" }}
             whileTap={{ scale: 0.95 }}
             transition={{ duration: 0.2 }}
@@ -56,7 +56,6 @@ function Dashboard() {
           </motion.button>
         ))}
       </motion.div>
-
       {/* Back Button */}
 <motion.button
   onClick={() => navigate("/welcome")}
