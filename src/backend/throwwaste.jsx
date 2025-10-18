@@ -18,7 +18,7 @@ function ThrowWaste() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isSterilizingEquipments, setIsSterilizingEquipments] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
-  const [showCottonPrompt, setShowCottonPrompt] = useState(false); 
+  const [showCottonPrompt, setShowCottonPrompt] = useState(false);
   const navigate = useNavigate();
   const socketRef = useRef(null);
   const timerRef = useRef(null);
@@ -27,7 +27,7 @@ function ThrowWaste() {
   // SOCKET.IO CONNECTION
   // ---------------------------
   useEffect(() => {
-    const socket = io("http://192.168.0.108:3000", {
+    const socket = io("http://192.168.1.23:3000", {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -37,35 +37,19 @@ function ThrowWaste() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Connected to server");
       setIsConnected(true);
-      setStatus("Connected to server, waiting for detection...");
+      setStatus("✅ Connected — Waiting for detection...");
       setIsDetecting(true);
     });
 
-    socket.on("connect_error", (error) => {
-      console.error("Connection error:", error);
-      setIsConnected(false);
-      setStatus(`❌ Connection error: ${error.message}`);
-    });
-
     socket.on("disconnect", () => {
-      console.log("Disconnected from server");
       setIsConnected(false);
-      setStatus("❌ Disconnected from server. Attempting to reconnect...");
+      setStatus("❌ Disconnected. Attempting to reconnect...");
     });
 
-    socket.on("handshake", (data) => {
-      console.log("Server handshake:", data.message);
-      setStatus("System ready for waste detection");
-    });
-
-    socket.on("pong", () => {
-      console.log("Received pong from server");
-    });
-
+    // 🧠 YOLO Detection event
     socket.on("detection_event", (data) => {
-      if (data.frame) setFrameUrl(data.frame); // ✅ Real-time frame from backend
+      if (data.frame) setFrameUrl(data.frame);
       const label = data.label ? data.label.trim().toLowerCase() : "none";
       setConfidence(data.confidence || 0);
       setLastDetection(new Date().toLocaleTimeString());
@@ -74,49 +58,47 @@ function ThrowWaste() {
       if (label === "none") {
         setWasteType(null);
         setStatus("No waste detected. Please place waste in front of camera.");
-      } 
-      else if (label === syringeLabel) {
+      } else if (label === syringeLabel) {
         setWasteType(syringeLabel);
-        setStatus(`⚠️ Syringe Detected! (${data.confidence}% confident)`);
-        new Audio("/alert.mp3").play().catch((e) => console.log("Audio play failed:", e));
-      } 
-      else if (hazardous.includes(label)) {
+        setStatus(`⚠️ Syringe Detected (${data.confidence}% confidence)`);
+        new Audio("/alert.mp3").play().catch(() => {});
+      } else if (hazardous.includes(label)) {
         setWasteType("hazardous");
-        setStatus(`🔴 Hazardous Waste (${label}) Detected! (${data.confidence}% confident)`);
-      } 
-      else if (nonhazardous.includes(label)) {
+        setStatus(`🔴 Hazardous Waste Detected (${label})`);
+      } else if (nonhazardous.includes(label)) {
         setWasteType("nonhazardous");
-        setStatus(`🟢 Non-Hazardous Waste (${label}) Detected! (${data.confidence}% confident)`);
-      }
-      else if (equipments.includes(label)) {
+        setStatus(`🟢 Non-Hazardous Waste Detected (${label})`);
+      } else if (equipments.includes(label)) {
         setWasteType("equipment");
-        setStatus(`⚪ Equipment Detected: ${label.toUpperCase()} (${data.confidence}% confident)`);
-      }
-      else if (label === otherwaste) {
-        setShowCottonPrompt(true); // 🧩 trigger cotton prompt
-        setStatus(`🟡 Cotton Detected (${data.confidence}% confident)`);
-      }
-      else {
+        setStatus(`⚪ Equipment Detected (${label})`);
+      } else if (label === otherwaste) {
+        setShowCottonPrompt(true);
+        setStatus(`🟡 Cotton Detected (${data.confidence}% confidence)`);
+      } else {
         setWasteType("other");
-        setStatus(`⚪ Unrecognized Item (${label}) Detected (${data.confidence}% confident)`);
+        setStatus(`⚪ Unrecognized Waste Detected (${label})`);
       }
     });
 
-    socket.on("frame_update", (data) => {
-      if (data.image) setFrameUrl(data.image);
+    // 🧭 Feedback from Arduino
+    socket.on("arduino_feedback", (data) => {
+      console.log("Arduino:", data.message);
+      setStatus(`🧠 Arduino: ${data.message}`);
+    });
+
+    // ⚙️ Backend status updates (YOLO or Flask)
+    socket.on("arduino_status", (data) => {
+      console.log("System:", data.message);
+      setStatus(`⚙️ ${data.message}`);
     });
 
     socket.on("server_message", (data) => {
-      if (data.type === "error") {
-        console.error("Error from server:", data.message);
-        setStatus(`❌ Error: ${data.message}`);
-      } else if (data.type === "status") {
-        setStatus(data.message);
-      }
+      if (data.type === "status") setStatus(data.message);
+      if (data.type === "error") setStatus(`❌ ${data.message}`);
     });
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      socket.disconnect();
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
@@ -125,44 +107,46 @@ function ThrowWaste() {
   // ACTION HANDLERS
   // ---------------------------
   const handleAction = (action) => {
+    if (!socketRef.current) return;
+
     if (action === "STERILIZE EQUIPMENTS") {
       if (isSterilizingEquipments) return;
       setIsSterilizingEquipments(true);
-      setStatus("Sterilizing Equipments in Progress...");
+      setStatus("🧼 Sterilizing Equipments...");
 
-      if (socketRef.current) {
+      socketRef.current.emit("STERILIZE_EQUIPMENTS");
+
+      timerRef.current = setTimeout(() => {
+        setStatus("✅ Equipments Sterilized Successfully");
+        setIsSterilizingEquipments(false);
+        setShowOptions(true);
+      }, 20000);
+      return;
+    }
+
+    if (action === "Throwing Waste") {
+      setStatus("🚮 Throwing waste...");
+
+      if (wasteType === syringeLabel) {
+        socketRef.current.emit("THROW_SYRINGE");
+      } else if (wasteType === "hazardous") {
+        socketRef.current.emit("THROW_HAZARDOUS");
+      } else if (wasteType === "nonhazardous") {
+        socketRef.current.emit("THROW_NONHAZARDOUS");
+      } else if (wasteType === "equipment") {
         socketRef.current.emit("STERILIZE_EQUIPMENTS");
       }
 
       timerRef.current = setTimeout(() => {
-        setStatus("Equipments Sterilization Completed");
-        setIsSterilizingEquipments(false);
-        setShowOptions(true);
-      }, 20000);
-    } 
-
-    else if (action === "Throwing Waste") {
-      setStatus("Throwing waste...");
-
-      if (socketRef.current) {
-        if (wasteType === syringeLabel) {
-          socketRef.current.emit("THROW_SYRINGE");
-        } else if (equipments.includes(wasteType)) {
-          socketRef.current.emit("STERILIZE_EQUIPMENTS");
-        } else if (wasteType === "hazardous") {
-          socketRef.current.emit("THROW_HAZARDOUS");
-        } else if (wasteType === "nonhazardous") {
-          socketRef.current.emit("THROW_NONHAZARDOUS");
-        }
-      }
-
-      timerRef.current = setTimeout(() => {
-        setStatus("Waste thrown successfully");
+        setStatus("✅ Waste successfully thrown");
         setShowOptions(true);
       }, 3000);
     }
   };
 
+  // ---------------------------
+  // CONTROL BUTTONS
+  // ---------------------------
   const startNewDetection = () => {
     if (socketRef.current && !isDetecting) {
       setWasteType(null);
@@ -173,37 +157,34 @@ function ThrowWaste() {
   };
 
   const handleEndDetection = () => {
-    if (socketRef.current) socketRef.current.emit("end_detection");
+    socketRef.current?.emit("end_detection");
     setShowOptions(false);
     setWasteType(null);
-    setStatus("Detection ended.");
+    setStatus("🛑 Detection Ended.");
     setIsDetecting(false);
   };
 
   const handleContinueDetection = () => {
-    if (socketRef.current) socketRef.current.emit("start_detection");
+    socketRef.current?.emit("start_detection");
     setShowOptions(false);
     setWasteType(null);
     setStatus("Continuing detection...");
     setIsDetecting(true);
   };
 
-  // ---------------------------
-  // 🧩 COTTON PROMPT HANDLER
-  // ---------------------------
   const handleCottonChoice = (choice) => {
     setShowCottonPrompt(false);
     if (choice === "used") {
       setWasteType("hazardous");
-      setStatus("🩸 Used Cotton Detected → Throwing to Hazardous Bin");
+      setStatus("🩸 Used Cotton → Hazardous Bin");
     } else {
       setWasteType("nonhazardous");
-      setStatus("🧻 Unused Cotton Detected → Throwing to Non-Hazardous Bin");
+      setStatus("🧻 Unused Cotton → Non-Hazardous Bin");
     }
   };
 
   // ---------------------------
-  // BUTTON STYLES
+  // STYLING HELPERS
   // ---------------------------
   const getButtonColor = () => {
     if (!wasteType) return "bg-gray-500 cursor-not-allowed";
@@ -227,12 +208,9 @@ function ThrowWaste() {
   // UI RENDER
   // ---------------------------
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center"
-      style={{ backgroundImage: "url('/images/background.png')" }}
-    >
+    <div className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center" style={{ backgroundImage: "url('/images/background.png')" }}>
       <div className="flex flex-col items-center justify-center h-screen text-white">
-
+        
         {/* Connection Indicator */}
         <div className="absolute top-4 right-4">
           <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
@@ -258,109 +236,53 @@ function ThrowWaste() {
         {/* YOLO Camera Feed */}
         {frameUrl ? (
           <div className="relative mt-4">
-            <img
-              src={frameUrl}
-              className="w-full max-w-lg border-2 border-blue-500 rounded-lg shadow-lg"
-              alt="YOLO Annotated Frame"
-            />
-            {wasteType && (
-              <div className="absolute top-0 left-0 bg-black bg-opacity-50 text-white p-2 rounded-tl-lg rounded-br-lg">
-                {wasteType === syringeLabel && "⚠️ "}
-                {wasteType === "nonhazardous" && "🟢 "}
-                {wasteType === "hazardous" && "🔴 "}
-                {wasteType === "equipment" && "⚪ "}
-                {wasteType.toUpperCase()}
-              </div>
-            )}
+            <img src={frameUrl} className="w-full max-w-lg border-2 border-blue-500 rounded-lg shadow-lg" alt="YOLO Frame" />
           </div>
         ) : (
           <p className="text-lg mt-4">Waiting for camera stream...</p>
         )}
 
         {/* ACTION BUTTONS */}
-        {!isDetecting && wasteType && wasteType !== "equipment" && (
-          <button
-            onClick={() => handleAction("Throwing Waste")}
-            className={`${getButtonColor()} text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105`}
-          >
+        {!isDetecting && wasteType && (
+          <button onClick={() => handleAction(wasteType === "equipment" ? "STERILIZE EQUIPMENTS" : "Throwing Waste")} className={`${getButtonColor()} text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105`}>
             {getButtonText()}
           </button>
         )}
 
-        {!isDetecting && wasteType === "equipment" && (
-          <button
-            onClick={() => handleAction("STERILIZE EQUIPMENTS")}
-            disabled={isSterilizingEquipments}
-            className={`${
-              isSterilizingEquipments
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-500 hover:bg-blue-700"
-            } text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105`}
-          >
-            {isSterilizingEquipments ? "STERILIZING EQUIPMENTS..." : "STERILIZE EQUIPMENTS"}
-          </button>
-        )}
-
         {!isDetecting && !wasteType && (
-          <button
-            onClick={startNewDetection}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105"
-          >
+          <button onClick={startNewDetection} className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105">
             START NEW DETECTION
           </button>
         )}
 
         {/* BACK BUTTON */}
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="mt-6 bg-green-600 hover:bg-green-800 text-white font-bold py-3 px-10 rounded-full shadow-md transform transition-transform hover:scale-105"
-        >
+        <button onClick={() => navigate("/dashboard")} className="mt-6 bg-green-600 hover:bg-green-800 text-white font-bold py-3 px-10 rounded-full shadow-md transform transition-transform hover:scale-105">
           BACK
         </button>
 
-        {/* MODAL: End or Continue Detection */}
+        {/* End/Continue Modal */}
         {showOptions && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
             <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96">
               <h3 className="text-xl font-bold mb-4">Action Complete</h3>
               <p className="mb-6">Do you want to end detection or continue?</p>
               <div className="flex justify-center gap-4">
-                <button
-                  onClick={handleEndDetection}
-                  className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  End Detection
-                </button>
-                <button
-                  onClick={handleContinueDetection}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Continue
-                </button>
+                <button onClick={handleEndDetection} className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full">End</button>
+                <button onClick={handleContinueDetection} className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full">Continue</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 🧩 COTTON PROMPT MODAL */}
+        {/* Cotton Modal */}
         {showCottonPrompt && (
           <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50">
             <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96">
               <h3 className="text-xl font-bold mb-4">Cotton Detected</h3>
               <p className="mb-6">Is the cotton used or unused?</p>
               <div className="flex justify-center gap-4">
-                <button
-                  onClick={() => handleCottonChoice("used")}
-                  className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Used (Hazardous)
-                </button>
-                <button
-                  onClick={() => handleCottonChoice("unused")}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Unused (Non-Hazardous)
-                </button>
+                <button onClick={() => handleCottonChoice("used")} className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full">Used (Hazardous)</button>
+                <button onClick={() => handleCottonChoice("unused")} className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full">Unused (Non-Hazardous)</button>
               </div>
             </div>
           </div>
