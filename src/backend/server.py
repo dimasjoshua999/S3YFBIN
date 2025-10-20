@@ -14,7 +14,6 @@ app = Flask(__name__)
 # ⚙️  CONFIGURATIONS
 # -----------------------------------
 CORS(app, resources={r"/*": {"origins": "*"}})
-
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -34,7 +33,7 @@ thread_running = False
 try:
     arduino = serial.Serial('COM13', 9600, timeout=1)
     time.sleep(2)
-    print("✅ Arduino connected on COM")
+    print("✅ Arduino connected on COM13")
 except Exception as e:
     print("⚠️ Arduino connection failed:", e)
     arduino = None
@@ -44,8 +43,7 @@ except Exception as e:
 # -----------------------------------
 @app.route('/')
 def home():
-    return jsonify({"message": "YOLO Flask server is running."})
-
+    return jsonify({"message": "YOLO Flask server is running on port 5000."})
 
 # -----------------------------------
 # 🧠 YOLO DETECTION THREAD
@@ -53,7 +51,7 @@ def home():
 def detect_objects():
     global camera, thread_running
     try:
-        camera = cv2.VideoCapture(0)
+        camera = cv2.VideoCapture(1)
         if not camera.isOpened():
             socketio.emit('server_message', {'type': 'error', 'message': 'Failed to open camera'})
             return
@@ -102,7 +100,6 @@ def detect_objects():
         if camera and camera.isOpened():
             camera.release()
 
-
 # -----------------------------------
 # 🧠 SOCKET EVENTS
 # -----------------------------------
@@ -111,13 +108,12 @@ def handle_connect():
     global thread_running, detection_thread
     print("🟢 Client connected")
     emit('handshake', {'message': 'Connected to YOLO Flask server'})
-
+    
     if not thread_running:
         thread_running = True
         detection_thread = threading.Thread(target=detect_objects)
         detection_thread.daemon = True
         detection_thread.start()
-
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -125,18 +121,18 @@ def handle_disconnect():
     print("🔴 Client disconnected")
     thread_running = False
 
-
 @socketio.on('start_detection')
 def handle_start_detection():
     global thread_running, detection_thread
     print("🔍 Starting new detection...")
+    
     if not thread_running:
         thread_running = True
         detection_thread = threading.Thread(target=detect_objects)
         detection_thread.daemon = True
         detection_thread.start()
+    
     emit('server_message', {'type': 'status', 'message': 'Starting detection...'})
-
 
 # -----------------------------------
 # ⚙️ FRONTEND → ARDUINO COMMANDS
@@ -154,38 +150,34 @@ def send_to_arduino(command):
     else:
         emit('server_message', {'type': 'error', 'message': 'Arduino not connected'})
 
-
 @socketio.on('THROW_HAZARDOUS')
 def handle_hazardous():
     print("🔴 Hazardous waste command received")
     send_to_arduino("HAZARDOUS")
-
 
 @socketio.on('THROW_NONHAZARDOUS')
 def handle_nonhazardous():
     print("🟢 Non-hazardous waste command received")
     send_to_arduino("NONHAZARDOUS")
 
-
 @socketio.on('THROW_SYRINGE')
 def handle_syringe():
     print("🟠 Syringe waste command received")
     send_to_arduino("SYRINGE")
-
 
 @socketio.on('STERILIZE_EQUIPMENTS')
 def handle_equipments():
     print("🔵 Equipment sterilization command received")
     send_to_arduino("EQUIPMENT")
 
-
 @socketio.on('ping')
 def handle_ping():
     emit('pong')
 
-
 # -----------------------------------
-# 🚀 RUN SERVER
+# 🚀 RUN SERVER - Changed to port 5000
 # -----------------------------------
 if __name__ == '__main__':
-    socketio.run(app, host='192.168.1.23', port=3000, debug=True, allow_unsafe_werkzeug=True)
+    # Flask backend runs on port 5000, React will run on port 3000
+    print("🚀 Starting Flask server on http://localhost:5000")
+    socketio.run(app, host='127.0.0.1', port=5000, debug=True, allow_unsafe_werkzeug=True)

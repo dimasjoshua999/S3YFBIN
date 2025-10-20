@@ -24,10 +24,10 @@ function ThrowWaste() {
   const timerRef = useRef(null);
 
   // ---------------------------
-  // SOCKET.IO CONNECTION
+  // SOCKET.IO CONNECTION - Changed to port 5000
   // ---------------------------
   useEffect(() => {
-    const socket = io("http://192.168.1.23:3000", {
+    const socket = io("http://localhost:5000", {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -77,6 +77,13 @@ function ThrowWaste() {
       } else {
         setWasteType("other");
         setStatus(`⚪ Unrecognized Waste Detected (${label})`);
+      }
+    });
+
+    // Handle frame updates
+    socket.on("frame_update", (data) => {
+      if (data.image) {
+        setFrameUrl(data.image);
       }
     });
 
