@@ -8,6 +8,11 @@ const BinStatus = () => {
   const [warningMessage, setWarningMessage] = useState("");
   const [textColor, setTextColor] = useState("text-white");
   const [error, setError] = useState(null);
+  const [wasteLevels, setWasteLevels] = useState({
+    SYRINGE: 0,
+    "HAZARDOUS WASTE": 0,
+    "NON-HAZARDOUS WASTE": 0,
+  });
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -21,32 +26,53 @@ const BinStatus = () => {
     checkConnection();
   }, []);
 
+  // Select only from 25, 50, 75, 100
+  const getRandomPercentage = () => {
+    const levels = [25, 50, 75, 100];
+    return levels[Math.floor(Math.random() * levels.length)];
+  };
+
+  const getColorForLevel = (percentage) => {
+    if (percentage === 25) return "bg-green-500";
+    if (percentage === 50) return "bg-yellow-400";
+    if (percentage === 75) return "bg-orange-500";
+    if (percentage === 100) return "bg-red-600";
+    return "bg-gray-400";
+  };
+
   const checkBinStatus = (binType) => {
     if (error) return;
 
-    let percentage = Math.floor(Math.random() * 101);
+    const percentage = getRandomPercentage();
+    setWasteLevels((prev) => ({ ...prev, [binType]: percentage }));
+
     let newStatus, newWarningMessage, newTextColor;
 
-    if (percentage === 100) {
-      newStatus = "CRITICAL";
-      newTextColor = "text-red-600 animate-blink";
-      newWarningMessage = "Immediate Disposal Required";
-    } else if (percentage >= 85) {
-      newStatus = "HIGH CONTAMINATION RISK";
-      newTextColor = "text-orange-500 animate-blink";
-      newWarningMessage = "Approaching Capacity, Plan for Disposal";
-    } else if (percentage >= 51) {
-      newStatus = "MODERATE WASTE LEVEL";
-      newTextColor = "text-yellow-400 animate-blink";
-      newWarningMessage = "Waste Level is Manageable";
-    } else if (percentage === 0) {
-      newStatus = "NO WASTE PRESENT";
-      newTextColor = "text-green-500 animate-blink";
-      newWarningMessage = "Bin is Ready for Use";
-    } else {
-      newStatus = "LOW WASTE ACCUMULATION";
-      newTextColor = "text-lime-400 animate-blink";
-      newWarningMessage = "Minimal Waste Detected";
+    switch (percentage) {
+      case 25:
+        newStatus = "LOW WASTE ACCUMULATION";
+        newTextColor = "text-green-400";
+        newWarningMessage = "Minimal Waste Detected";
+        break;
+      case 50:
+        newStatus = "MODERATE WASTE LEVEL";
+        newTextColor = "text-yellow-400";
+        newWarningMessage = "Waste Level is Manageable";
+        break;
+      case 75:
+        newStatus = "HIGH WASTE LEVEL";
+        newTextColor = "text-orange-500";
+        newWarningMessage = "Approaching Capacity, Plan for Disposal";
+        break;
+      case 100:
+        newStatus = "CRITICAL LEVEL";
+        newTextColor = "text-red-600";
+        newWarningMessage = "Immediate Disposal Required";
+        break;
+      default:
+        newStatus = "UNKNOWN STATUS";
+        newTextColor = "text-white";
+        newWarningMessage = "";
     }
 
     setStatus(`${binType}: ${newStatus}`);
@@ -80,24 +106,50 @@ const BinStatus = () => {
         BIN STATUS
       </motion.h2>
 
-      {/* Bin Selection */}
-      <p className="text-2xl font-bold mt-4 text-white">SELECT BIN TO CHECK STATUS:</p>
-      <div className="flex gap-4 mt-4">
-        {["SYRINGE", "HAZARDOUS WASTE", "NON-HAZARDOUS WASTE"].map((bin, index) => (
-          <button
-            key={index}
-            onClick={() => checkBinStatus(bin)}
-            className="bg-[#5DE2F0] text-white font-bold py-2 px-5 rounded-full shadow-lg hover:bg-[#3CB3C6]"
-            disabled={error}
-          >
-            {bin}
-          </button>
-        ))}
+      <p className="text-2xl font-bold mt-4 text-white">
+        SELECT BIN TO CHECK STATUS:
+      </p>
+
+      {/* Animated Bins */}
+      <div className="flex gap-8 mt-8">
+        {["SYRINGE", "HAZARDOUS WASTE", "NON-HAZARDOUS WASTE"].map((bin, index) => {
+          const percentage = wasteLevels[bin];
+          const binColor = getColorForLevel(percentage);
+          return (
+            <motion.div
+              key={index}
+              className="relative w-40 h-52 bg-gray-200 rounded-t-3xl rounded-b-xl shadow-lg border-4 border-white cursor-pointer overflow-hidden"
+              whileHover={{ scale: 1.05 }}
+              onClick={() => checkBinStatus(bin)}
+            >
+              {/* Bin Fill (animated) */}
+              <motion.div
+                className={`absolute bottom-0 w-full ${binColor}`}
+                initial={{ height: 0 }}
+                animate={{ height: `${percentage}%` }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              ></motion.div>
+
+              {/* Bin Lid */}
+              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-700 rounded-t-xl"></div>
+
+              {/* Bin Label */}
+              <p className="absolute inset-x-0 bottom-2 text-center font-bold text-white drop-shadow-lg">
+                {bin}
+              </p>
+
+              {/* Percentage */}
+              <p className="absolute inset-x-0 top-1/2 text-center font-bold text-xl text-white drop-shadow-md">
+                {percentage}%
+              </p>
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Status Output */}
       {status && (
-        <div className="mt-4 text-center">
+        <div className="mt-6 text-center">
           <p className={`text-xl font-bold ${textColor}`}>{status}</p>
           <p className="mt-2 text-gray-300">{warningMessage}</p>
         </div>
