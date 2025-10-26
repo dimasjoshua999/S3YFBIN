@@ -66,7 +66,6 @@ def safe_emit(event, data):
             return False
 
 
-# --- Detection Logic ---
 def detect_objects():
     global camera, thread_running, client_connected
 
@@ -76,13 +75,9 @@ def detect_objects():
             safe_emit('server_message', {'type': 'error', 'message': 'Failed to open camera'})
             return
 
-        model = YOLO("src/backend/YOLO2.pt")
+        model = YOLO("src/backend/new.pt")
         model.fuse()
         model.conf = 0.5
-
-        last_detection_label = None
-        detection_start_time = None
-        detection_confirmed = False
 
         while thread_running and client_connected:
             if not client_connected:
@@ -94,15 +89,14 @@ def detect_objects():
                 time.sleep(0.1)
                 continue
 
-            # Mirror the camera frame (natural view)
+            # Mirror frame (natural camera view)
             frame = cv2.flip(frame, 1)
-
             results = model.track(frame, persist=True, device="cpu")[0]
 
             if results.boxes is not None and len(results.boxes.cls) > 0:
                 num_detections = len(results.boxes.cls)
 
-                # --- Multiple object warning - STOP DETECTION ---
+                # --- Multiple object warning - stop detection ---
                 if num_detections > 1:
                     if not safe_emit("server_message", {
                         "type": "warning",
@@ -110,57 +104,43 @@ def detect_objects():
                         "message": "Please throw or place wastes/equipment one by one."
                     }):
                         break
-                        
+
                     annotated_frame = results.plot()
                     _, buffer = cv2.imencode('.jpg', annotated_frame)
                     img_base64 = base64.b64encode(buffer).decode('utf-8')
                     safe_emit('frame_update', {'image': f'data:image/jpeg;base64,{img_base64}'})
-                    
-                    # Stop detection and wait for user to continue
+
                     thread_running = False
                     print("Multiple objects detected - stopping detection")
                     break
 
+                # --- Single detection ---
                 cls_id = int(results.boxes.cls[0].item())
                 confidence = float(results.boxes.conf[0].item())
                 label = model.names.get(cls_id, "unknown").lower()
 
-                # --- 2-second stability check ---
                 if confidence > 0.5:
-                    if last_detection_label == label:
-                        if detection_start_time is None:
-                            detection_start_time = time.time()
-                        elif not detection_confirmed and (time.time() - detection_start_time >= 2):
-                            detection_confirmed = True
-                            print(f"Stable detection confirmed: {label}")
+                    print(f"Detected: {label} ({confidence:.2f})")
 
-                            if not safe_emit('detection_event', {
-                                'label': label,
-                                'confidence': round(confidence * 100, 2),
-                                'timestamp': time.time()
-                            }):
-                                break
+                    # Send detection event instantly
+                    if not safe_emit('detection_event', {
+                        'label': label,
+                        'confidence': round(confidence * 100, 2),
+                        'timestamp': time.time()
+                    }):
+                        break
 
-                            safe_emit("server_message", {
-                                "type": "status",
-                                "color": "white",
-                                "message": f"{label.upper()} detected successfully."
-                            })
+                    safe_emit("server_message", {
+                        "type": "status",
+                        "color": "white",
+                        "message": f"{label.upper()} detected successfully."
+                    })
 
-                            # Stop detection - user will choose action
-                            # NO choice prompt here - wait for action completion
-                            thread_running = False
-                            break
-                    else:
-                        last_detection_label = label
-                        detection_start_time = time.time()
-                        detection_confirmed = False
-            else:
-                last_detection_label = None
-                detection_start_time = None
-                detection_confirmed = False
+                    # Stop detection after first valid detection
+                    thread_running = False
+                    break
 
-            # --- Frame Stream ---
+            # --- Stream frame to client ---
             if client_connected:
                 try:
                     annotated_frame = results.plot()
@@ -176,6 +156,7 @@ def detect_objects():
     except Exception as e:
         safe_emit('server_message', {'type': 'error', 'message': str(e)})
         print("detect_objects error:", e)
+
     finally:
         if camera and camera.isOpened():
             camera.release()

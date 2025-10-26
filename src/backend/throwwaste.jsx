@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import { motion } from "framer-motion";
 
 const syringeLabel = "syringe";
 const hazardous = ["gauze pad", "gauze", "gloves", "disposable-mask"];
@@ -21,15 +22,13 @@ function ThrowWaste() {
   const [showCottonPrompt, setShowCottonPrompt] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+
   const navigate = useNavigate();
   const socketRef = useRef(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
-    const socket = io("http://localhost:5000", {
-      transports: ["websocket"],
-    });
-
+    const socket = io("http://localhost:5000", { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -94,8 +93,7 @@ function ThrowWaste() {
       }
     });
 
-    // Listen for backend choice prompt after action completion
-    socket.on("choice_prompt", (data) => {
+    socket.on("choice_prompt", () => {
       setShowOptions(true);
     });
 
@@ -105,7 +103,6 @@ function ThrowWaste() {
     };
   }, []);
 
-  // Actions
   const handleAction = (action) => {
     if (!socketRef.current) return;
 
@@ -114,12 +111,11 @@ function ThrowWaste() {
       setIsSterilizingEquipments(true);
       setStatus("🧼 Sterilizing equipments...");
       socketRef.current.emit("STERILIZE_EQUIPMENTS");
-      
-      // Frontend timer for UI feedback
-      // Backend will send choice prompt after completion
+
       timerRef.current = setTimeout(() => {
         setIsSterilizingEquipments(false);
         setStatus("✅ Equipments sterilized successfully.");
+        setShowOptions(true);
       }, 20000);
       return;
     }
@@ -131,10 +127,9 @@ function ThrowWaste() {
       else if (wasteType === "nonhazardous") socketRef.current.emit("THROW_NONHAZARDOUS");
       else if (wasteType === "equipment") socketRef.current.emit("STERILIZE_EQUIPMENTS");
 
-      // Frontend timer for UI feedback
-      // Backend will send choice prompt after completion
       timerRef.current = setTimeout(() => {
         setStatus("✅ Waste successfully thrown.");
+        setShowOptions(true);
       }, 3000);
     }
   };
@@ -144,6 +139,7 @@ function ThrowWaste() {
       setWasteType(null);
       setStatus("Starting new detection...");
       setIsDetecting(true);
+      setShowOptions(false);
       socketRef.current.emit("start_detection");
     }
   };
@@ -158,6 +154,7 @@ function ThrowWaste() {
 
   const handleContinueDetection = () => {
     setShowOptions(false);
+    setShowWarningModal(false);
     setWasteType(null);
     setStatus("Continuing detection...");
     startNewDetection();
@@ -174,7 +171,6 @@ function ThrowWaste() {
     }
   };
 
-  // Styling
   const statusColor = {
     normal: "text-white",
     error: "text-red-500 font-bold",
@@ -199,142 +195,148 @@ function ThrowWaste() {
     return "THROW OTHER WASTE";
   };
 
-  // UI
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center"
-      style={{ backgroundImage: "url('/background.png')" }}
+      className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center px-4 sm:px-6 md:px-10 text-center"
+      style={{ backgroundImage: "url('/background1.jpg')" }}
     >
-      <div className="flex flex-col items-center justify-center h-screen text-white">
-        {/* Connection indicator */}
-        <div className="absolute top-4 right-4">
-          <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
-            <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? "bg-green-400" : "bg-red-400"}`}></div>
-            {isConnected ? "Connected" : "Disconnected"}
-          </div>
+      {/* Connection Status */}
+      <div className="absolute top-4 right-4 text-xs sm:text-sm md:text-base">
+        <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
+          <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? "bg-green-400" : "bg-red-400"}`}></div>
+          {isConnected ? "Connected" : "Disconnected"}
         </div>
+      </div>
 
-        <h1 className="text-5xl font-bold">
-          S3YF <span className="text-blue-300 border-b-4 border-blue-300 pb-2">BIN</span>
-        </h1>
-        <h2 className="text-3xl mt-4">STERILIZATION | THROW</h2>
+      {/* Title */}
+      <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">
+        S3YF <span className="text-blue-300">BIN</span>
+      </h1>
+      <h2 className="text-xl sm:text-2xl md:text-3xl mt-3 text-white">STERILIZATION | THROW</h2>
 
-        <div className="text-center mt-4">
-          <p className={`text-2xl font-bold ${statusColor}`}>{status}</p>
-          {confidence > 0 && (
-            <p className="text-lg mt-2">
-              Confidence: {confidence}% | Last Detection: {lastDetection}
-            </p>
-          )}
-        </div>
-
-        {/* Camera Feed */}
-        {frameUrl ? (
-          <div className="relative mt-4">
-            <img
-              src={frameUrl}
-              className="w-full max-w-lg border-2 border-blue-500 rounded-lg shadow-lg"
-              alt="YOLO Frame"
-            />
-          </div>
-        ) : (
-          <p className="text-lg mt-4">Waiting for camera stream...</p>
-        )}
-
-        {/* Action Buttons */}
-        {!isDetecting && wasteType && (
-          <button
-            onClick={() =>
-              handleAction(wasteType === "equipment" ? "STERILIZE EQUIPMENTS" : "Throwing Waste")
-            }
-            className={`${getButtonColor()} text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105`}
-          >
-            {getButtonText()}
-          </button>
-        )}
-
-        {!isDetecting && !wasteType && !showWarningModal && !showOptions && (
-          <button
-            onClick={startNewDetection}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105"
-          >
-            START NEW DETECTION
-          </button>
-        )}
-
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="mt-6 bg-green-600 hover:bg-green-800 text-white font-bold py-3 px-10 rounded-full shadow-md transform transition-transform hover:scale-105"
-        >
-          BACK
-        </button>
-
-        {/* Warning Modal - Stops detection until user continues */}
-        {showWarningModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50">
-            <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96 border-2 border-red-500">
-              <h3 className="text-xl font-bold mb-4 text-red-600">⚠️ Multiple Wastes Detected</h3>
-              <p className="mb-6 text-red-500 font-semibold">
-                Please throw waste or put equipment one by one.
-              </p>
-              <button
-                onClick={handleContinueDetection}
-                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
-              >
-                Continue Detection
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* End/Continue Modal - After action completion */}
-        {showOptions && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96">
-              <h3 className="text-xl font-bold mb-4">Action Complete</h3>
-              <p className="mb-6">Do you want to end detection or continue?</p>
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={handleEndDetection}
-                  className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  End
-                </button>
-                <button
-                  onClick={handleContinueDetection}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Continue
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Cotton Modal */}
-        {showCottonPrompt && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50">
-            <div className="bg-white p-6 rounded-2xl shadow-xl text-center text-black w-96">
-              <h3 className="text-xl font-bold mb-4">Cotton Detected</h3>
-              <p className="mb-6">Is the cotton used or unused?</p>
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={() => handleCottonChoice("used")}
-                  className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Used (Hazardous)
-                </button>
-                <button
-                  onClick={() => handleCottonChoice("unused")}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-full"
-                >
-                  Unused (Non-Hazardous)
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Status Display */}
+      <div className="text-center mt-4">
+        <p className={`text-base sm:text-lg md:text-2xl font-bold ${statusColor}`}>{status}</p>
+        {confidence > 0 && (
+          <p className="text-sm sm:text-base mt-2 text-gray-200">
+            Confidence: {confidence}% | Last Detection: {lastDetection}
+          </p>
         )}
       </div>
+
+      {/* YOLO Frame */}
+      {frameUrl ? (
+        <div className="relative mt-4 w-full max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-xl">
+          <img
+            src={frameUrl}
+            className="w-full border-2 border-blue-500 rounded-lg shadow-lg object-contain"
+            alt="YOLO Frame"
+          />
+        </div>
+      ) : (
+        <p className="text-sm sm:text-base mt-4 text-white">Waiting for camera stream...</p>
+      )}
+
+      {/* Main Action Button */}
+      {!isDetecting && wasteType && (
+        <button
+          onClick={() =>
+            handleAction(wasteType === "equipment" ? "STERILIZE EQUIPMENTS" : "Throwing Waste")
+          }
+          className={`${getButtonColor()} text-white font-bold py-2 sm:py-3 px-6 sm:px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105 text-sm sm:text-base`}
+        >
+          {getButtonText()}
+        </button>
+      )}
+
+      {/* Start Detection Button */}
+      {!isDetecting && !wasteType && !showWarningModal && !showOptions && (
+        <button
+          onClick={startNewDetection}
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 sm:py-3 px-6 sm:px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105 text-sm sm:text-base"
+        >
+          START NEW DETECTION
+        </button>
+      )}
+
+      {/* Back Button */}
+      <motion.button
+        className="mt-10 bg-white/20 backdrop-blur-md px-6 sm:px-8 py-2 sm:py-3 text-white font-bold rounded-full border border-white/40 hover:bg-white/30 transition-all shadow-md text-sm sm:text-base"
+        whileHover={{ scale: 1.1 }}
+        style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
+        onClick={() => navigate("/dashboard")}
+      >
+        BACK
+      </motion.button>
+
+      {/* Modals — all responsive and centered */}
+      {(showWarningModal || showOptions || showCottonPrompt) && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 px-4">
+          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-xl text-center text-black w-full max-w-xs sm:max-w-sm border-2 border-gray-300">
+            {/* Warning Modal */}
+            {showWarningModal && (
+              <>
+                <h3 className="text-lg sm:text-xl font-bold mb-3 text-red-600">
+                  ⚠️ Multiple Wastes Detected
+                </h3>
+                <p className="mb-4 text-red-500 font-semibold text-sm sm:text-base">
+                  Please throw waste or put equipment one by one.
+                </p>
+                <button
+                  onClick={handleContinueDetection}
+                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
+                >
+                  Continue Detection
+                </button>
+              </>
+            )}
+
+            {/* Choice Modal */}
+            {showOptions && (
+              <>
+                <h3 className="text-lg sm:text-xl font-bold mb-4">Action Complete</h3>
+                <p className="mb-6 text-sm sm:text-base">Do you want to end detection or continue?</p>
+                <div className="flex justify-center gap-3 sm:gap-4">
+                  <button
+                    onClick={handleEndDetection}
+                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
+                  >
+                    End
+                  </button>
+                  <button
+                    onClick={handleContinueDetection}
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Cotton Modal */}
+            {showCottonPrompt && (
+              <>
+                <h3 className="text-lg sm:text-xl font-bold mb-4">Cotton Detected</h3>
+                <p className="mb-6 text-sm sm:text-base">Is the cotton used or unused?</p>
+                <div className="flex justify-center gap-3 sm:gap-4">
+                  <button
+                    onClick={() => handleCottonChoice("used")}
+                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
+                  >
+                    Used (Hazardous)
+                  </button>
+                  <button
+                    onClick={() => handleCottonChoice("unused")}
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
+                  >
+                    Unused (Non-Hazardous)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
