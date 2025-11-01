@@ -11,13 +11,13 @@ This system ensures safer disposal practices in hospitals and promotes public he
  Sterilizes hospital equipment such as scissors, sphygmomanometers, stethoscopes
  Helps prevent healthcare-associated infections
 
-# Smart Segregation
-### Automatically categorizes medical waste into:
-Hazardous Waste
-Non-Hazardous Waste
-Syringe / Sharp Waste
+### Smart Segregation
+Automatically categorizes medical waste into:
+1. Hazardous Waste
+2. Non-Hazardous Waste
+3. Syringe Waste
 
-# Real-Time Bin Monitoring Dashboard
+### Real-Time Bin Monitoring Dashboard
  Displays bin status and fullness level using ultrasonic sensors
 
 # Project Goal
