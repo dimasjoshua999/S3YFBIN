@@ -21,7 +21,7 @@ Automatically categorizes medical waste into:
  Displays bin status and fullness level using ultrasonic sensors
 
 # Project Goal
- To promote responsible medical waste management and hospital equipment sterilization to enhance safety for healthcare workers and patients.
+ ## To promote responsible medical waste management and hospital equipment sterilization to enhance safety for healthcare workers and patients.
  SDG 12: Responsible Consumption and Production: Ensures safe, sustainable handling & disposal of medical waste
 
 # Tech Stack
