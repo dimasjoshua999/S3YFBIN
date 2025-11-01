@@ -1,25 +1,24 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 const Help = () => {
   const navigate = useNavigate();
 
   const steps = [
     { img: "18.png", text: "POWER ON THE SYSTEM" },
-    { img: "19.png", text: "PLACE YOUR TRASH ON THE PLATFORM" },
-    { img: "20.png", text: "CLICK DETECT THROW BUTTON" },
-    { img: "21.png", text: "PROCEED WITH STERILIZATION" },
+    { img: "19.png", text: "PLACE YOUR TRASH / EQUIPMENT ON THE PLATFORM" },
+    { img: "20.png", text: "CLICK START DETECTION BUTTON AND THROW WASTE" },
+    { img: "21.png", text: "PROCEED WITH STERILIZATION IF EQUIPMENT" },
     { img: "22.png", text: "REPEAT STEPS IF NECESSARY" },
-    { img: "23.png", text: "CHECK BINS' STATUS" },
+    { img: "23.png", text: "CHECK BIN STATUS" },
     { img: "24.png", text: "DISPOSE WASTE IF FULL" },
-    { img: "25.png", text: "SHUT DOWN THE SYSTEM" },
+    { img: "25.png", text: "POWER OFF IF DONE" },
   ];
 
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center px-4 sm:px-6 md:px-10 py-10"
-      style={{ backgroundImage: "url('/images/background.png')" }}
+      style={{ backgroundImage: "url('/background1.jpg')" }}
     >
       <motion.div
         className="flex flex-col items-center text-white w-full max-w-6xl"

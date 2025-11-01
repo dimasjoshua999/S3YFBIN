@@ -25,284 +25,248 @@ camera = None
 detection_thread = None
 thread_running = False
 client_connected = False
-socket_lock = threading.Lock()  # Add lock for thread safety
+socket_lock = threading.Lock()
 
-# --- Arduino Setup ---
 try:
     arduino = serial.Serial('COM13', 9600, timeout=1)
     time.sleep(2)
     print("Arduino connected on COM13")
-except Exception as e:
-    print("Arduino connection failed:", e)
+except:
+    print("Arduino connection failed")
     arduino = None
 
+ultrasonic_thread = None
+ultrasonic_running = False
+ultrasonic_lock = threading.Lock()
+
+BIN_HEIGHT_CM = 45.0
+MIN_FULL_CM = 5.0
+
+def safe_emit(event, data):
+    try:
+        if not socketio.server.manager.rooms.get("/", {}):
+            return
+        socketio.emit(event, data)
+    except:
+        pass
 
 @app.route('/')
 def home():
-    return jsonify({"message": "YOLO Flask server is running on port 5000."})
-
-
-# --- Safe Emit with better error handling ---
-def safe_emit(event, data):
-    global client_connected, socketio, socket_lock
-    
-    with socket_lock:
-        if not client_connected:
-            print(f"Skipped emit ({event}): no active client.")
-            return False
-            
-        try:
-            socketio.emit(event, data)
-            return True
-        except OSError as e:
-            if e.errno == 10038:
-                print(f"Socket closed during emit ({event}), marking client disconnected.")
-                client_connected = False
-            else:
-                print(f"OSError while emitting {event}: {e}")
-            return False
-        except Exception as e:
-            print(f"Emit failed for {event}: {e}")
-            return False
-
+    return jsonify({"message": "YOLO Flask server running"})
 
 def detect_objects():
-    global camera, thread_running, client_connected
-
+    global camera, thread_running
     try:
-        camera = cv2.VideoCapture(1)
+        camera = cv2.VideoCapture(0)
         if not camera.isOpened():
-            safe_emit('server_message', {'type': 'error', 'message': 'Failed to open camera'})
+            safe_emit('server_message', {'type': 'error', 'message': 'Camera error'})
             return
 
-        model = YOLO("src/backend/new.pt")
-        model.fuse()
+        model = YOLO("src/backend/waste.pt")
+        try: model.fuse()
+        except: pass
         model.conf = 0.5
 
-        while thread_running and client_connected:
-            if not client_connected:
-                print("No client connected, stopping detection.")
-                break
-
+        while thread_running:
             ret, frame = camera.read()
             if not ret:
                 time.sleep(0.1)
                 continue
 
-            # Mirror frame (natural camera view)
             frame = cv2.flip(frame, 1)
-            results = model.track(frame, persist=True, device="cpu")[0]
+            try:
+                results = model.track(frame, persist=True, device="cpu")[0]
+            except:
+                time.sleep(0.1)
+                continue
 
             if results.boxes is not None and len(results.boxes.cls) > 0:
                 num_detections = len(results.boxes.cls)
 
-                # --- Multiple object warning - stop detection ---
                 if num_detections > 1:
-                    if not safe_emit("server_message", {
+                    safe_emit("server_message", {
                         "type": "warning",
                         "color": "red",
-                        "message": "Please throw or place wastes/equipment one by one."
-                    }):
-                        break
+                        "message": "Please throw one item at a time."
+                    })
 
-                    annotated_frame = results.plot()
-                    _, buffer = cv2.imencode('.jpg', annotated_frame)
-                    img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    safe_emit('frame_update', {'image': f'data:image/jpeg;base64,{img_base64}'})
+                    try:
+                        annotated_frame = results.plot()
+                        _, buffer = cv2.imencode('.jpg', annotated_frame)
+                        img = base64.b64encode(buffer).decode('utf-8')
+                        safe_emit('frame_update', {'image': f'data:image/jpeg;base64,{img}'})
+                    except:
+                        pass
 
                     thread_running = False
-                    print("Multiple objects detected - stopping detection")
                     break
 
-                # --- Single detection ---
-                cls_id = int(results.boxes.cls[0].item())
-                confidence = float(results.boxes.conf[0].item())
-                label = model.names.get(cls_id, "unknown").lower()
+                try:
+                    cid = int(results.boxes.cls[0].item())
+                    conf = float(results.boxes.conf[0].item())
+                    label = model.names.get(cid, "unknown").lower()
+                except:
+                    continue
 
-                if confidence > 0.5:
-                    print(f"Detected: {label} ({confidence:.2f})")
-
-                    # Send detection event instantly
-                    if not safe_emit('detection_event', {
+                if conf > 0.5:
+                    safe_emit('detection_event', {
                         'label': label,
-                        'confidence': round(confidence * 100, 2),
+                        'confidence': round(conf * 100, 2),
                         'timestamp': time.time()
-                    }):
-                        break
-
+                    })
                     safe_emit("server_message", {
                         "type": "status",
                         "color": "white",
-                        "message": f"{label.upper()} detected successfully."
+                        "message": f"{label.upper()} detected."
                     })
-
-                    # Stop detection after first valid detection
                     thread_running = False
                     break
 
-            # --- Stream frame to client ---
-            if client_connected:
-                try:
-                    annotated_frame = results.plot()
-                    _, buffer = cv2.imencode('.jpg', annotated_frame)
-                    img_base64 = base64.b64encode(buffer).decode('utf-8')
-                    if not safe_emit('frame_update', {'image': f'data:image/jpeg;base64,{img_base64}'}):
-                        break
-                except Exception as e:
-                    print(f"Frame encoding error: {e}")
+            try:
+                annotated_frame = results.plot()
+                _, buffer = cv2.imencode('.jpg', annotated_frame)
+                img = base64.b64encode(buffer).decode('utf-8')
+                safe_emit('frame_update', {'image': f'data:image/jpeg;base64,{img}'})
+            except:
+                pass
 
             time.sleep(0.1)
-
-    except Exception as e:
-        safe_emit('server_message', {'type': 'error', 'message': str(e)})
-        print("detect_objects error:", e)
 
     finally:
         if camera and camera.isOpened():
             camera.release()
-            camera = None
         thread_running = False
-        print("Camera released, detection thread stopped.")
 
+def parse_arduino_line(line):
+    out = {'hazardous': None, 'nonhazardous': None, 'syringe': None}
+    try:
+        text = line.decode(errors='ignore') if isinstance(line, bytes) else str(line)
+        tokens = text.replace(',', ' ').split()
+        nums = []
+        for tok in tokens:
+            tok = tok.lower().replace('cm', '')
+            try: nums.append(float(tok))
+            except: pass
+        if len(nums) >= 3:
+            out['hazardous'], out['nonhazardous'], out['syringe'] = nums[:3]
+    except:
+        pass
+    return out
 
-# --- Socket Events ---
+def distance_to_percentage(d):
+    if d is None: return None
+    if d <= MIN_FULL_CM: return 100.0
+    if d >= BIN_HEIGHT_CM: return 0.0
+    pct = (1 - ((d - MIN_FULL_CM) / (BIN_HEIGHT_CM - MIN_FULL_CM))) * 100
+    return round(max(0, min(100, pct)), 1)
+
+def ultrasonic_loop():
+    global ultrasonic_running
+    if not arduino:
+        safe_emit('server_message', {'type': 'error', 'message': 'Arduino missing'})
+        return
+    while True:
+        with ultrasonic_lock:
+            if not ultrasonic_running:
+                break
+        try:
+            line = arduino.readline()
+            if not line:
+                time.sleep(0.2)
+                continue
+
+            p = parse_arduino_line(line)
+            hz, nh, s = map(distance_to_percentage, [p['hazardous'], p['nonhazardous'], p['syringe']])
+
+            payload = {
+                'hazardous_cm': p['hazardous'],
+                'nonhazardous_cm': p['nonhazardous'],
+                'syringe_cm': p['syringe'],
+                'hazardous_pct': hz,
+                'nonhazardous_pct': nh,
+                'syringe_pct': s,
+                'timestamp': time.time()
+            }
+            safe_emit('ultrasonic_update', payload)
+        except:
+            time.sleep(0.5)
+
 @socketio.on('connect')
 def handle_connect():
-    global thread_running, detection_thread, client_connected
-    
-    with socket_lock:
-        client_connected = True
-    
-    print("Client connected")
-    emit('handshake', {'message': 'Connected to YOLO Flask server'})
-    
-    if not thread_running:
-        thread_running = True
-        detection_thread = threading.Thread(target=detect_objects)
-        detection_thread.daemon = True
-        detection_thread.start()
-
+    global client_connected
+    with socket_lock: client_connected = True
+    emit('handshake', {'message': 'connected'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    global thread_running, client_connected, camera
-    print("Client disconnected, cleaning up.")
-    
-    with socket_lock:
-        client_connected = False
-    
+    global thread_running, client_connected, ultrasonic_running
+    with socket_lock: client_connected = False
     thread_running = False
-    
-    # Wait for detection thread to finish
-    if detection_thread and detection_thread.is_alive():
-        detection_thread.join(timeout=2)
-    
-    try:
-        if camera and camera.isOpened():
-            camera.release()
-            print("Camera released on disconnect.")
-    except Exception as e:
-        print(f"Camera cleanup failed: {e}")
-
+    with ultrasonic_lock: ultrasonic_running = False
+    if camera and camera.isOpened(): camera.release()
 
 @socketio.on('start_detection')
 def handle_start_detection():
     global thread_running, detection_thread
-    
-    if not client_connected:
-        print("Cannot start detection: no client connected")
-        return
-    
-    print("Starting new detection...")
     if not thread_running:
         thread_running = True
-        detection_thread = threading.Thread(target=detect_objects)
-        detection_thread.daemon = True
+        detection_thread = threading.Thread(target=detect_objects, daemon=True)
         detection_thread.start()
     safe_emit('server_message', {'type': 'status', 'color': 'white', 'message': 'Starting detection...'})
 
+@socketio.on('subscribe_ultrasonic')
+def handle_subscribe_ultrasonic():
+    global ultrasonic_running, ultrasonic_thread
+    with ultrasonic_lock:
+        if ultrasonic_running: return
+        ultrasonic_running = True
+        ultrasonic_thread = threading.Thread(target=ultrasonic_loop, daemon=True)
+        ultrasonic_thread.start()
 
-# --- Arduino Commands (with completion callback in separate thread) ---
-def send_to_arduino_async(command, wait_time=3):
-    """Handle Arduino command and prompt in separate thread to avoid blocking"""
-    global client_connected
-    
+@socketio.on('unsubscribe_ultrasonic')
+def handle_unsubscribe_ultrasonic():
+    global ultrasonic_running
+    with ultrasonic_lock: ultrasonic_running = False
+
+def send_to_arduino(command, wait=3):
     if arduino and arduino.is_open:
         try:
-            arduino.write((command + "\n").encode())
+            arduino.write((command+"\n").encode())
             arduino.flush()
-            print(f"Sent to Arduino: {command}")
-            safe_emit('server_message', {'type': 'status', 'color': 'white', 'message': f'{command} command sent.'})
-            
-            # Wait for action to complete
-            time.sleep(wait_time)
-            
-            # Check if client still connected before sending prompt
+            time.sleep(wait)
             if client_connected:
-                safe_emit("choice_prompt", {
-                    "message": "Action completed. Continue detection or end it?",
-                    "options": ["Continue", "Stop"]
-                })
-        except Exception as e:
-            print(f"Arduino write failed: {e}")
-            safe_emit('server_message', {'type': 'error', 'message': f'Failed to send {command}: {str(e)}'})
+                safe_emit("choice_prompt", {"message": "Completed", "options": ["Continue", "Stop"]})
+        except:
+            safe_emit('server_message', {'type': 'error', 'message': f'Failed {command}'})
     else:
-        safe_emit('server_message', {'type': 'error', 'message': 'Arduino not connected'})
-
+        safe_emit('server_message', {'type': 'error', 'message': 'Arduino missing'})
 
 @socketio.on('THROW_HAZARDOUS')
-def handle_hazardous():
-    print("Hazardous waste command received")
-    threading.Thread(target=send_to_arduino_async, args=("HAZARDOUS", 3), daemon=True).start()
-
+def handle_hazardous(): threading.Thread(target=send_to_arduino, args=("HAZARDOUS",3), daemon=True).start()
 
 @socketio.on('THROW_NONHAZARDOUS')
-def handle_nonhazardous():
-    print("Non-hazardous waste command received")
-    threading.Thread(target=send_to_arduino_async, args=("NONHAZARDOUS", 3), daemon=True).start()
-
+def handle_nonhazardous(): threading.Thread(target=send_to_arduino, args=("NONHAZARDOUS",3), daemon=True).start()
 
 @socketio.on('THROW_SYRINGE')
-def handle_syringe():
-    print("Syringe waste command received")
-    threading.Thread(target=send_to_arduino_async, args=("SYRINGE", 3), daemon=True).start()
-
+def handle_syringe(): threading.Thread(target=send_to_arduino, args=("SYRINGE",3), daemon=True).start()
 
 @socketio.on('STERILIZE_EQUIPMENTS')
-def handle_equipments():
-    print("Equipment sterilization command received")
-    threading.Thread(target=send_to_arduino_async, args=("EQUIPMENT", 20), daemon=True).start()
+def handle_equipment(): threading.Thread(target=send_to_arduino, args=("EQUIPMENT",20), daemon=True).start()
 
-
-# --- User Choice Handler ---
 @socketio.on('user_choice')
-def handle_user_choice(data):
+def handle_choice(d):
     global thread_running, detection_thread
-    
-    if not client_connected:
-        print("Cannot process user choice: no client connected")
-        return
-    
-    choice = data.get("choice", "").lower()
-    if choice == "continue":
-        print("User chose to continue detection.")
+    if not client_connected: return
+    if d.get("choice","").lower() == "continue":
         if not thread_running:
             thread_running = True
-            detection_thread = threading.Thread(target=detect_objects)
-            detection_thread.daemon = True
+            detection_thread = threading.Thread(target=detect_objects, daemon=True)
             detection_thread.start()
-        safe_emit('server_message', {'type': 'status', 'color': 'white', 'message': 'Continuing detection...'})
     else:
-        print("User chose to stop detection.")
         thread_running = False
-        safe_emit('server_message', {'type': 'status', 'color': 'white', 'message': 'Detection ended.'})
-
 
 @socketio.on('ping')
-def handle_ping():
-    emit('pong')
-
+def handle_ping(): emit('pong')
 
 if __name__ == '__main__':
-    print("Starting Flask server on http://localhost:5000")
-    socketio.run(app, host='127.0.0.1', port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='127.0.0.1', port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)

@@ -1,31 +1,31 @@
-import React, { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 
 const teamMembers = [
   {
-    name: "Efren M. Cal Jr.",
+    name: "Efren Jr M. Cal",
     role: "Hardware Specialist",
     subRole: "System Integration",
-    img: "/images/cal.png",
+    img: "/CAL.jpg",
   },
   {
     name: "Joshua B. Dimas",
     role: "Frontend & Backend Developer",
     subRole: "System Logic and Functionality",
-    img: "/images/dimas.png",
+    img: "/DIMAS.jpg",
   },
   {
     name: "Paul Allen M. Parreño",
     role: "Database Manager",
     subRole: "Data Handling & Storage",
-    img: "/images/parreno.png",
+    img: "/PARRENO.jpg",
   },
   {
     name: "Jower L. Tanglao Jr.",
     role: "UI Designer",
     subRole: "Interface & User Experience",
-    img: "/images/tanglao.png",
+    img: "/TANGLAO.jpg",
   },
 ];
 

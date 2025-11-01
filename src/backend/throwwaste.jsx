@@ -1,7 +1,7 @@
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import { motion } from "framer-motion";
 
 const syringeLabel = "syringe";
 const hazardous = ["gauze pad", "gauze", "gloves", "disposable-mask"];
@@ -22,6 +22,7 @@ function ThrowWaste() {
   const [showCottonPrompt, setShowCottonPrompt] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [binFullAlert, setBinFullAlert] = useState("");
 
   const navigate = useNavigate();
   const socketRef = useRef(null);
@@ -35,7 +36,6 @@ function ThrowWaste() {
       setIsConnected(true);
       setStatus("✅ Connected — Waiting for detection...");
       setStatusType("normal");
-      setIsDetecting(true);
     });
 
     socket.on("disconnect", () => {
@@ -61,6 +61,11 @@ function ThrowWaste() {
         setShowWarningModal(true);
         setIsDetecting(false);
       }
+    });
+
+    socket.on("bin_alert", (data) => {
+      setBinFullAlert(`⚠️ ${data.bin} bin is almost full!`);
+      setStatusType("warning");
     });
 
     socket.on("detection_event", (data) => {
@@ -198,9 +203,20 @@ function ThrowWaste() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center px-4 sm:px-6 md:px-10 text-center"
-      style={{ backgroundImage: "url('/background1.jpg')" }}
+      style={{
+        backgroundImage: "url('/background.png')",
+        backgroundRepeat: "no-repeat",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "scroll" 
+      }}
     >
-      {/* Connection Status */}
+      {binFullAlert && (
+        <p className="text-red-500 font-extrabold text-sm sm:text-base mb-2 animate-pulse">
+          {binFullAlert}
+        </p>
+      )}
+
       <div className="absolute top-4 right-4 text-xs sm:text-sm md:text-base">
         <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
           <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? "bg-green-400" : "bg-red-400"}`}></div>
@@ -208,13 +224,12 @@ function ThrowWaste() {
         </div>
       </div>
 
-      {/* Title */}
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white">
         S3YF <span className="text-blue-300">BIN</span>
       </h1>
+
       <h2 className="text-xl sm:text-2xl md:text-3xl mt-3 text-white">STERILIZATION | THROW</h2>
 
-      {/* Status Display */}
       <div className="text-center mt-4">
         <p className={`text-base sm:text-lg md:text-2xl font-bold ${statusColor}`}>{status}</p>
         {confidence > 0 && (
@@ -224,7 +239,6 @@ function ThrowWaste() {
         )}
       </div>
 
-      {/* YOLO Frame */}
       {frameUrl ? (
         <div className="relative mt-4 w-full max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-xl">
           <img
@@ -237,7 +251,6 @@ function ThrowWaste() {
         <p className="text-sm sm:text-base mt-4 text-white">Waiting for camera stream...</p>
       )}
 
-      {/* Main Action Button */}
       {!isDetecting && wasteType && (
         <button
           onClick={() =>
@@ -249,7 +262,6 @@ function ThrowWaste() {
         </button>
       )}
 
-      {/* Start Detection Button */}
       {!isDetecting && !wasteType && !showWarningModal && !showOptions && (
         <button
           onClick={startNewDetection}
@@ -259,26 +271,20 @@ function ThrowWaste() {
         </button>
       )}
 
-      {/* Back Button */}
       <motion.button
         className="mt-10 bg-white/20 backdrop-blur-md px-6 sm:px-8 py-2 sm:py-3 text-white font-bold rounded-full border border-white/40 hover:bg-white/30 transition-all shadow-md text-sm sm:text-base"
         whileHover={{ scale: 1.1 }}
-        style={{ textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}
         onClick={() => navigate("/dashboard")}
       >
         BACK
       </motion.button>
 
-      {/* Modals — all responsive and centered */}
       {(showWarningModal || showOptions || showCottonPrompt) && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 px-4">
           <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-xl text-center text-black w-full max-w-xs sm:max-w-sm border-2 border-gray-300">
-            {/* Warning Modal */}
             {showWarningModal && (
               <>
-                <h3 className="text-lg sm:text-xl font-bold mb-3 text-red-600">
-                  ⚠️ Multiple Wastes Detected
-                </h3>
+                <h3 className="text-lg sm:text-xl font-bold mb-3 text-red-600">⚠️ Multiple Wastes Detected</h3>
                 <p className="mb-4 text-red-500 font-semibold text-sm sm:text-base">
                   Please throw waste or put equipment one by one.
                 </p>
@@ -291,7 +297,6 @@ function ThrowWaste() {
               </>
             )}
 
-            {/* Choice Modal */}
             {showOptions && (
               <>
                 <h3 className="text-lg sm:text-xl font-bold mb-4">Action Complete</h3>
@@ -313,7 +318,6 @@ function ThrowWaste() {
               </>
             )}
 
-            {/* Cotton Modal */}
             {showCottonPrompt && (
               <>
                 <h3 className="text-lg sm:text-xl font-bold mb-4">Cotton Detected</h3>

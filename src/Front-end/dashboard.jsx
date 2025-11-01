@@ -6,9 +6,9 @@ function Dashboard() {
 
   return (
     <div
-      className="flex flex-col items-center justify-center min-h-screen text-white px-4 bg-fixed"
+      className="flex flex-col items-center justify-center min-h-screen text-white px-4"
       style={{
-        backgroundImage: "url('/background.png')",
+        backgroundImage: "url('/background1.jpg')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
