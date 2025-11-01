@@ -1,71 +1,50 @@
-# Getting Started with Create React App
+# S3YF Bin: Smart Sterilization & Segregation System
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+SAFEBIN for SAFER LIFE, FOR SAFER DISPOSAL
 
-## Available Scripts
+S3YF Bin is an innovative medical waste management system designed to enhance safety within healthcare environments.
+S3YF stands for Segregation & Sterilization Smart System — providing UV-C sterilization of hospital equipment and automated segregation of medical waste.
 
-In the project directory, you can run:
+This system ensures safer disposal practices in hospitals and promotes public health protection through proper waste handling and sterilization.
 
-### `npm start`
+# Key Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## UV-C Sterilization
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Sterilizes hospital equipment such as scissors, sphygmomanometers, stethoscopes
+### Helps prevent healthcare-associated infections
 
-### `npm test`
+## Smart Segregation
+### Automatically categorizes medical waste into:
+Hazardous Waste
+Non-Hazardous Waste
+Syringe / Sharp Waste
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+# Real-Time Bin Monitoring Dashboard
+## Displays bin status and fullness level using ultrasonic sensors
 
-### `npm run build`
+# Project Goal
+### To promote responsible medical waste management and hospital equipment sterilization to enhance safety for healthcare workers and patients.
+#### SDG 12: Responsible Consumption and Production: Ensures safe, sustainable handling & disposal of medical waste
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+# Tech Stack
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+| Category  | Tools Used                            |
+| --------- | ------------------------------------- |
+| Frontend  | React, CSS, HTML                      |
+| Backend   | Python, Flask                         |
+| AI System | YOLO Medical Waste Detection          |
+| Hardware  | Microcontrollers & Ultrasonic Sensors |
+| Languages | Python, JavaScript, CSS, HTML         |
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-### `npm run eject`
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+# S3YF BIN: TEAM 
+| Name                         | Role                 |
+| ---------------------------- | -------------------- |
+| **Dimas, Joshua**            | Full-Stack Developer |
+| **Parreño, Paul Allen**      | Database Management  |
+| **Efren Jr. Cal**            | Hardware Management  |
+| **Jower Tanglao Jr.**        | UI / UX Developer    |
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-"# SAFEBIN2" 
