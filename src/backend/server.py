@@ -62,7 +62,7 @@ def detect_objects():
             safe_emit('server_message', {'type': 'error', 'message': 'Camera error'})
             return
 
-        model = YOLO("src/backend/waste.pt")
+        model = YOLO("src/backend/waste_ncnn_model")
         try: model.fuse()
         except: pass
         model.conf = 0.5
