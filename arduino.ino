@@ -14,16 +14,17 @@ Servo servoNonHazardous;  // Servo 2 - non-hazardous
 
 const int relay1 = 8;     // Conveyor LED
 const int relay2 = 9;     // Equipment sterilization LED
-const int pinHaz = 10;     // Servo 1 pin
-const int pinNonHaz = 11;  // Servo 2 pin
+const int pinHaz = 10;    // Servo 1 pin
+const int pinNonHaz = 11; // Servo 2 pin
 
 String incoming = "";
 bool servo1Moved = false;
 bool servo2Moved = false;
 
-const float BIN_HEIGHT = 45.0;      // cm
-const float FULL_DISTANCE = 10.0;   // bin near full threshold
+const float BIN_HEIGHT = 45;      // cm
+const float FULL_DISTANCE = 10;   // bin near full threshold
 
+// ---------- SETUP ----------
 void setup() {
   Serial.begin(9600);
   Serial.setTimeout(200);
@@ -46,27 +47,24 @@ void setup() {
   Serial.println("SYSTEM_READY");
 }
 
+// ---------- MAIN LOOP ----------
 void loop() {
-  // ======= ULTRASONIC BIN STATUS (ALWAYS RUNNING) =======
-  float distH = getDistance(TRIG_H, ECHO_H);
-  float distNH = getDistance(TRIG_NH, ECHO_NH);
-  float distS = getDistance(TRIG_S, ECHO_S);
+  // ======= ULTRASONIC BIN STATUS =======
+  float distH = getStableDistance(TRIG_H, ECHO_H);
+  float distNH = getStableDistance(TRIG_NH, ECHO_NH);
+  float distS = getStableDistance(TRIG_S, ECHO_S);
 
-  // Clamp invalid readings
-  if(distH > BIN_HEIGHT || distH < 0) distH = BIN_HEIGHT;
-  if(distNH > BIN_HEIGHT || distNH < 0) distNH = BIN_HEIGHT;
-  if(distS > BIN_HEIGHT || distS < 0) distS = BIN_HEIGHT;
+  // Clamp to valid range
+  if (distH > BIN_HEIGHT || distH < 0) distH = BIN_HEIGHT;
+  if (distNH > BIN_HEIGHT || distNH < 0) distNH = BIN_HEIGHT;
+  if (distS > BIN_HEIGHT || distS < 0) distS = BIN_HEIGHT;
 
-  // 📊 CONSISTENT FORMAT FOR PYTHON PARSING
-  Serial.print("Hazardous: ");
-  Serial.print(distH, 1);
-  Serial.print(" cm, Non-Hazardous: ");
-  Serial.print(distNH, 1);
-  Serial.print(" cm, Syringe: ");
-  Serial.print(distS, 1);
-  Serial.println(" cm");
+  // ✅ One clean line for Flask to parse
+  Serial.print(distH); Serial.print(" ");
+  Serial.print(distNH); Serial.print(" ");
+  Serial.println(distS);
 
-  // ======= MANUAL SERIAL COMMANDS (FOR YOLO ACTIONS) =======
+  // ======= MANUAL SERIAL COMMANDS =======
   if (Serial.available() > 0) {
     incoming = Serial.readStringUntil('\n');
     incoming.trim();
@@ -84,67 +82,78 @@ void loop() {
       Serial.println("CMD_OK:HAZARDOUS");
       moveServo(servoHazardous, pinHaz);
       servo1Moved = true;
-      flashLED(relay1, 10000); // 10s conveyor light
+      flashLED(relay1, 10000);
       Serial.println("DONE:HAZARDOUS");
 
     } else if (incoming == "NONHAZARDOUS") {
       Serial.println("CMD_OK:NONHAZARDOUS");
       moveServo(servoNonHazardous, pinNonHaz);
       servo2Moved = true;
-      flashLED(relay1, 10000); // 10s conveyor light
+      flashLED(relay1, 10000);
       Serial.println("DONE:NONHAZARDOUS");
 
     } else if (incoming == "EQUIPMENT") {
       Serial.println("CMD_OK:EQUIPMENT");
       digitalWrite(relay2, LOW);    // LED ON
-      delay(30000);                  // 30 sec
+      delay(30000);                 // 30 sec
       digitalWrite(relay2, HIGH);   // LED OFF
       Serial.println("DONE:EQUIPMENT");
 
     } else {
-      Serial.print("UNKNOWN_CMD: "); 
-      Serial.println(incoming);
+      Serial.print("UNKNOWN_CMD: "); Serial.println(incoming);
     }
 
-    // Return servos after action
-    if (servo1Moved || servo2Moved) {
-      returnServosToStart();
-    }
+    // Return servos to start position
+    if (servo1Moved || servo2Moved) returnServosToStart();
+
+    delay(50);
   }
 
-  delay(1000);  // 1 second delay between readings
+  delay(1000); // Prevent flooding serial
 }
 
-// ======= FUNCTIONS =======
-float getDistance(int trigPin, int echoPin){
-  digitalWrite(trigPin, LOW); 
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH); 
-  delayMicroseconds(10);
+// ---------- FUNCTIONS ----------
+
+// Single distance read
+float getDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
 
-  long duration = pulseIn(echoPin, HIGH, 30000);
-  if(duration == 0) return BIN_HEIGHT;
+  long duration = pulseIn(echoPin, HIGH, 30000); // 30ms timeout
+  if (duration == 0) return BIN_HEIGHT;
   return duration * 0.034 / 2;
 }
 
-void moveServo(Servo &s, int pin){
+// Average of 3 readings (stabilized)
+float getStableDistance(int trig, int echo) {
+  float sum = 0; int count = 0;
+  for (int i = 0; i < 3; i++) {
+    float d = getDistance(trig, echo);
+    if (d > 0 && d < BIN_HEIGHT + 10) { sum += d; count++; }
+    delay(50);
+  }
+  if (count == 0) return BIN_HEIGHT;
+  return sum / count;
+}
+
+void moveServo(Servo &s, int pin) {
   s.attach(pin);
   delay(10);
-  s.write(30);       // Move to action position
+  s.write(30);
   delay(400);
-  s.write(0);        // Return to 0°
+  s.write(0);
   delay(300);
   s.detach();
 }
 
-void flashLED(int pin, int durationMs){
-  digitalWrite(pin, LOW);   // LED ON
+void flashLED(int pin, int durationMs) {
+  digitalWrite(pin, LOW);
   delay(durationMs);
-  digitalWrite(pin, HIGH);  // LED OFF
+  digitalWrite(pin, HIGH);
 }
 
-void returnServosToStart(){
+void returnServosToStart() {
   if (servo1Moved) {
     servoHazardous.attach(pinHaz);
     delay(10);
@@ -159,5 +168,5 @@ void returnServosToStart(){
     delay(300);
     servoNonHazardous.detach();
   }
-  Serial.println("Servos returned to start position");
+  Serial.println("✅ Servos returned to start position");
 }
