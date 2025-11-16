@@ -1,6 +1,4 @@
-import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
 const syringeLabel = "syringe";
@@ -12,21 +10,48 @@ const otherwaste = "cotton";
 function ThrowWaste() {
   const [status, setStatus] = useState("Initializing...");
   const [statusType, setStatusType] = useState("normal");
-  const [wasteType, setWasteType] = useState(null);
   const [frameUrl, setFrameUrl] = useState("");
   const [confidence, setConfidence] = useState(0);
   const [lastDetection, setLastDetection] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [isSterilizingEquipments, setIsSterilizingEquipments] = useState(false);
-  const [showCottonPrompt, setShowCottonPrompt] = useState(false);
-  const [showWarningModal, setShowWarningModal] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
-  const [binFullAlert, setBinFullAlert] = useState("");
+  const [isPaused, setIsPaused] = useState(false);
+  const [ultrasonicLevels, setUltrasonicLevels] = useState({
+    syringe_pct: 0,
+    hazardous_pct: 0,
+    nonhazardous_pct: 0,
+  });
 
-  const navigate = useNavigate();
   const socketRef = useRef(null);
   const timerRef = useRef(null);
+  const resumeTimerRef = useRef(null);
+
+  const autoThrowWaste = (type, pauseDuration) => {
+    setIsPaused(true);
+    setFrameUrl(""); // Clear camera immediately
+    
+    if (type === "syringe") socketRef.current?.emit("THROW_SYRINGE");
+    else if (type === "hazardous") socketRef.current?.emit("THROW_HAZARDOUS");
+    else if (type === "nonhazardous") socketRef.current?.emit("THROW_NONHAZARDOUS");
+    
+    // Server handles camera pause/resume automatically
+    // Just wait for the duration then allow new detections
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => {
+      setIsPaused(false);
+    }, pauseDuration);
+  };
+
+  const autoSterilizeEquipment = () => {
+    setIsPaused(true);
+    setFrameUrl(""); // Clear camera immediately
+    socketRef.current?.emit("STERILIZE_EQUIPMENTS");
+    
+    // Server handles camera pause/resume automatically
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => {
+      setIsPaused(false);
+    }, 30000);
+  };
 
   useEffect(() => {
     const socket = io("http://localhost:5000", { transports: ["websocket"] });
@@ -36,6 +61,8 @@ function ThrowWaste() {
       setIsConnected(true);
       setStatus("✅ Connected — Waiting for detection...");
       setStatusType("normal");
+      socket.emit("subscribe_ultrasonic");
+      socket.emit("start_detection");
     });
 
     socket.on("disconnect", () => {
@@ -55,150 +82,75 @@ function ThrowWaste() {
       } else if (data.type === "error") {
         setStatus(`❌ ${data.message}`);
         setStatusType("error");
-      } else if (data.type === "warning") {
-        setStatus(`⚠️ ${data.message}`);
-        setStatusType("warning");
-        setShowWarningModal(true);
-        setIsDetecting(false);
+        setIsPaused(false); // Resume on error
       }
     });
 
-    socket.on("bin_alert", (data) => {
-      setBinFullAlert(`⚠️ ${data.bin} bin is almost full!`);
-      setStatusType("warning");
+    socket.on("ultrasonic_update", (data) => {
+      setUltrasonicLevels({
+        syringe_pct: data.syringe_pct ?? 0,
+        hazardous_pct: data.hazardous_pct ?? 0,
+        nonhazardous_pct: data.nonhazardous_pct ?? 0,
+      });
     });
 
     socket.on("detection_event", (data) => {
+      if (isPaused) return;
+      
       const label = data.label ? data.label.trim().toLowerCase() : "none";
       setConfidence(data.confidence || 0);
       setLastDetection(new Date().toLocaleTimeString());
-      setIsDetecting(false);
 
       if (label === "none") {
-        setWasteType(null);
         setStatus("No waste detected. Please place waste in front of camera.");
       } else if (label === syringeLabel) {
-        setWasteType("syringe");
         setStatus(`⚠️ Syringe detected (${data.confidence}% confidence)`);
+        autoThrowWaste("syringe", 10000);
       } else if (hazardous.includes(label)) {
-        setWasteType("hazardous");
         setStatus(`🔴 Hazardous waste detected (${label})`);
+        autoThrowWaste("hazardous", 11000);
       } else if (nonhazardous.includes(label)) {
-        setWasteType("nonhazardous");
         setStatus(`🟢 Non-hazardous waste detected (${label})`);
+        autoThrowWaste("nonhazardous", 11000);
       } else if (equipments.includes(label)) {
-        setWasteType("equipment");
         setStatus(`⚪ Equipment detected (${label})`);
+        autoSterilizeEquipment();
       } else if (label === otherwaste) {
-        setShowCottonPrompt(true);
-        setStatus(`🟡 Cotton detected (${data.confidence}% confidence)`);
+        setStatus(`🟡 Cotton detected → Hazardous Bin`);
+        autoThrowWaste("hazardous", 11000);
       } else {
-        setWasteType("other");
         setStatus(`⚪ Unrecognized waste detected (${label})`);
       }
     });
 
-    socket.on("choice_prompt", () => {
-      setShowOptions(true);
-    });
-
     return () => {
+      socket.emit("unsubscribe_ultrasonic");
       socket.disconnect();
-      if (timerRef.current) clearTimeout(timerRef.current);
+      // Capture current ref values before cleanup
+      const timer = timerRef.current;
+      const resumeTimer = resumeTimerRef.current;
+      if (timer) clearTimeout(timer);
+      if (resumeTimer) clearTimeout(resumeTimer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAction = (action) => {
-    if (!socketRef.current) return;
-
-    if (action === "STERILIZE EQUIPMENTS") {
-      if (isSterilizingEquipments) return;
-      setIsSterilizingEquipments(true);
-      setStatus("🧼 Sterilizing equipments...");
-      socketRef.current.emit("STERILIZE_EQUIPMENTS");
-
-      timerRef.current = setTimeout(() => {
-        setIsSterilizingEquipments(false);
-        setStatus("✅ Equipments sterilized successfully.");
-        setShowOptions(true);
-      }, 20000);
-      return;
-    }
-
-    if (action === "Throwing Waste") {
-      setStatus("🚮 Throwing waste...");
-      if (wasteType === "syringe") socketRef.current.emit("THROW_SYRINGE");
-      else if (wasteType === "hazardous") socketRef.current.emit("THROW_HAZARDOUS");
-      else if (wasteType === "nonhazardous") socketRef.current.emit("THROW_NONHAZARDOUS");
-      else if (wasteType === "equipment") socketRef.current.emit("STERILIZE_EQUIPMENTS");
-
-      timerRef.current = setTimeout(() => {
-        setStatus("✅ Waste successfully thrown.");
-        setShowOptions(true);
-      }, 3000);
-    }
+  const getBinStatus = (pct) => {
+    if (pct >= 100) return { text: "FULL", color: "text-red-600 font-extrabold animate-pulse" };
+    if (pct >= 90) return { text: "ALMOST FULL", color: "text-orange-500 font-bold" };
+    if (pct >= 60) return { text: "HALF FULL", color: "text-yellow-500" };
+    return { text: `${pct}%`, color: "text-green-400" };
   };
 
-  const startNewDetection = () => {
-    if (socketRef.current && !isDetecting) {
-      setWasteType(null);
-      setStatus("Starting new detection...");
-      setIsDetecting(true);
-      setShowOptions(false);
-      socketRef.current.emit("start_detection");
-    }
-  };
-
-  const handleEndDetection = () => {
-    socketRef.current?.emit("end_detection");
-    setShowOptions(false);
-    setWasteType(null);
-    setStatus("🛑 Detection Ended.");
-    setIsDetecting(false);
-  };
-
-  const handleContinueDetection = () => {
-    setShowOptions(false);
-    setShowWarningModal(false);
-    setWasteType(null);
-    setStatus("Continuing detection...");
-    startNewDetection();
-  };
-
-  const handleCottonChoice = (choice) => {
-    setShowCottonPrompt(false);
-    if (choice === "used") {
-      setWasteType("hazardous");
-      setStatus("🩸 Used Cotton → Hazardous Bin");
-    } else {
-      setWasteType("nonhazardous");
-      setStatus("🧻 Unused Cotton → Non-Hazardous Bin");
-    }
-  };
+  const syringeStatus = getBinStatus(ultrasonicLevels.syringe_pct);
+  const hazardousStatus = getBinStatus(ultrasonicLevels.hazardous_pct);
+  const nonhazardousStatus = getBinStatus(ultrasonicLevels.nonhazardous_pct);
 
   const statusColor = {
     normal: "text-white",
     error: "text-red-500 font-bold",
     warning: "text-red-400 font-extrabold animate-pulse",
   }[statusType];
-
-  const getButtonColor = () => {
-    if (!wasteType) return "bg-gray-500 cursor-not-allowed";
-    if (wasteType === "syringe") return "bg-orange-600 hover:bg-orange-700";
-    if (wasteType === "nonhazardous") return "bg-green-600 hover:bg-green-700";
-    if (wasteType === "hazardous") return "bg-red-600 hover:bg-red-700";
-    if (wasteType === "equipment") return "bg-blue-500 hover:bg-blue-600";
-    return "bg-yellow-500 hover:bg-yellow-600";
-  };
-
-  const getButtonText = () => {
-    if (!wasteType) return "Waiting for Detection...";
-    if (wasteType === "syringe") return "THROW SYRINGE";
-    if (wasteType === "nonhazardous") return "THROW NON-HAZARDOUS WASTE";
-    if (wasteType === "hazardous") return "THROW HAZARDOUS WASTE";
-    if (wasteType === "equipment") return "STERILIZE EQUIPMENTS";
-    return "THROW OTHER WASTE";
-  };
 
   return (
     <div
@@ -208,15 +160,9 @@ function ThrowWaste() {
         backgroundRepeat: "no-repeat",
         backgroundSize: "cover",
         backgroundPosition: "center",
-        backgroundAttachment: "scroll" 
+        backgroundAttachment: "scroll"
       }}
     >
-      {binFullAlert && (
-        <p className="text-red-500 font-extrabold text-sm sm:text-base mb-2 animate-pulse">
-          {binFullAlert}
-        </p>
-      )}
-
       <div className="absolute top-4 right-4 text-xs sm:text-sm md:text-base">
         <div className={`flex items-center ${isConnected ? "text-green-400" : "text-red-400"}`}>
           <div className={`w-3 h-3 rounded-full mr-2 ${isConnected ? "bg-green-400" : "bg-red-400"}`}></div>
@@ -248,99 +194,32 @@ function ThrowWaste() {
           />
         </div>
       ) : (
-        <p className="text-sm sm:text-base mt-4 text-white">Waiting for camera stream...</p>
-      )}
-
-      {!isDetecting && wasteType && (
-        <button
-          onClick={() =>
-            handleAction(wasteType === "equipment" ? "STERILIZE EQUIPMENTS" : "Throwing Waste")
-          }
-          className={`${getButtonColor()} text-white font-bold py-2 sm:py-3 px-6 sm:px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105 text-sm sm:text-base`}
-        >
-          {getButtonText()}
-        </button>
-      )}
-
-      {!isDetecting && !wasteType && !showWarningModal && !showOptions && (
-        <button
-          onClick={startNewDetection}
-          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 sm:py-3 px-6 sm:px-8 rounded-full shadow-lg mt-6 transform transition-transform hover:scale-105 text-sm sm:text-base"
-        >
-          START NEW DETECTION
-        </button>
-      )}
-
-      <motion.button
-        className="mt-10 bg-white/20 backdrop-blur-md px-6 sm:px-8 py-2 sm:py-3 text-white font-bold rounded-full border border-white/40 hover:bg-white/30 transition-all shadow-md text-sm sm:text-base"
-        whileHover={{ scale: 1.1 }}
-        onClick={() => navigate("/dashboard")}
-      >
-        BACK
-      </motion.button>
-
-      {(showWarningModal || showOptions || showCottonPrompt) && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 px-4">
-          <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-xl text-center text-black w-full max-w-xs sm:max-w-sm border-2 border-gray-300">
-            {showWarningModal && (
-              <>
-                <h3 className="text-lg sm:text-xl font-bold mb-3 text-red-600">⚠️ Multiple Wastes Detected</h3>
-                <p className="mb-4 text-red-500 font-semibold text-sm sm:text-base">
-                  Please throw waste or put equipment one by one.
-                </p>
-                <button
-                  onClick={handleContinueDetection}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
-                >
-                  Continue Detection
-                </button>
-              </>
-            )}
-
-            {showOptions && (
-              <>
-                <h3 className="text-lg sm:text-xl font-bold mb-4">Action Complete</h3>
-                <p className="mb-6 text-sm sm:text-base">Do you want to end detection or continue?</p>
-                <div className="flex justify-center gap-3 sm:gap-4">
-                  <button
-                    onClick={handleEndDetection}
-                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
-                  >
-                    End
-                  </button>
-                  <button
-                    onClick={handleContinueDetection}
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
-                  >
-                    Continue
-                  </button>
-                </div>
-              </>
-            )}
-
-            {showCottonPrompt && (
-              <>
-                <h3 className="text-lg sm:text-xl font-bold mb-4">Cotton Detected</h3>
-                <p className="mb-6 text-sm sm:text-base">Is the cotton used or unused?</p>
-                <div className="flex justify-center gap-3 sm:gap-4">
-                  <button
-                    onClick={() => handleCottonChoice("used")}
-                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
-                  >
-                    Used (Hazardous)
-                  </button>
-                  <button
-                    onClick={() => handleCottonChoice("unused")}
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-full text-sm sm:text-base"
-                  >
-                    Unused (Non-Hazardous)
-                  </button>
-                </div>
-              </>
-            )}
+        <div className="relative mt-4 w-full max-w-xs sm:max-w-sm md:max-w-lg lg:max-w-xl">
+          <div className="w-full h-64 bg-gray-800/50 border-2 border-blue-500 rounded-lg shadow-lg flex items-center justify-center">
+            <p className="text-white text-sm sm:text-base">
+              {isPaused ? "Camera paused - Processing waste..." : "Waiting for camera stream..."}
+            </p>
           </div>
         </div>
       )}
+
+      <div className="mt-6 bg-black/40 backdrop-blur-md p-4 rounded-xl border border-white/30">
+        <h3 className="text-lg font-bold text-white mb-3">BIN STATUS</h3>
+        <div className="flex gap-6 text-sm sm:text-base">
+          <div className="text-center">
+            <p className="text-gray-300 mb-1">SYRINGE</p>
+            <p className={syringeStatus.color}>{syringeStatus.text}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-gray-300 mb-1">HAZARDOUS</p>
+            <p className={hazardousStatus.color}>{hazardousStatus.text}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-gray-300 mb-1">NON-HAZARDOUS</p>
+            <p className={nonhazardousStatus.color}>{nonhazardousStatus.text}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
